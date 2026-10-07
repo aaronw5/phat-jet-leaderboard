@@ -279,3 +279,6 @@ full float model's (66): the compressed model keeps accuracy better than W/Z/t r
   Fine-tune arms (q10): 79.97% @ 110k LUT, 80.05% @ 143k. d=24 fine-tune 80.38% val @ 333k EBOPs.
   Launched **q12**: 5000-epoch runs of the winning config (targets 200k/250k, both teachers, 2 seeds).
   Verilog + bit-exact running for the ep2357 design (copy in runs/_seeds/best_n64_ep2357.keras).
+- 10:15 — **Best in-envelope so far: 80.56% test @ 144,622 LUT (8.4%), 12 stages, 40 ns** (q9/q64-u-lg-t250k-kd
+  epoch 2760, snapshot runs/_traced/...epoch=2760...); 80.54% @ 141.7k (ep 2776). Tracer now copies every traced
+  checkpoint to runs/_traced/ (Pareto dirs drop dominated points as runs improve). Verilog + bit-exact running.

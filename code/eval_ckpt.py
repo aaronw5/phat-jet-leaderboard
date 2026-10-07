@@ -34,7 +34,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from phat_variants import build_q_from_args, build_variant, kw_from_args
 
 run_dir = os.path.dirname(a.ckpt) if os.path.basename(os.path.dirname(a.ckpt)) != "pareto" else os.path.dirname(os.path.dirname(a.ckpt))
-cfg = json.load(open(os.path.join(run_dir, "config.json")))  # lambda GMP indicators: rebuild, then load_weights
+cfg_path = os.path.join(run_dir, "config.json")
+if os.path.basename(run_dir) == "_traced":  # snapshot naming: <run_tag>__<ckpt>.keras with <run_tag>__config.json
+    cfg_path = os.path.join(run_dir, os.path.basename(a.ckpt).rsplit("__", 1)[0] + "__config.json")
+cfg = json.load(open(cfg_path))  # lambda GMP indicators: rebuild, then load_weights
 m = build_q_from_args(cfg) if cfg.get("mode") == "qat" else build_variant(quantized=False, **kw_from_args(cfg))
 m.load_weights(a.ckpt)
 N = m.inputs[0].shape[1]
