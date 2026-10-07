@@ -1,1 +1,115 @@
-<!doctype html><title>PHAT-JeT leaderboard</title><p>building…
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PHAT-JeT Leaderboard</title>
+<meta name="description" content="Every PHAT-JeT trigger-envelope variant: test accuracy, background rejection, FPGA estimates, diagrams and code.">
+<style>
+:root{--bg:#fafafa;--fg:#1a1a1a;--muted:#666;--line:#e3e3e3;--card:#fff;--acc:#2f6fdb;--ok:#1d8a4a;--okbg:#e6f6ec;--warn:#b35c00;
+ --io:#d9e3f5;--linear:#e8e8e8;--geo:#dcefdc;--attn:#f6dede;--mix:#fbe9cf;--pool:#ece0f5}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#121416;--fg:#e8e8e8;--muted:#a0a0a0;--line:#2c3036;--card:#1a1d21;--acc:#6ea0ff;--ok:#5fd38d;--okbg:#153523;--warn:#ffb067;
+ --io:#28344a;--linear:#2b2f35;--geo:#24402a;--attn:#4a2a2a;--mix:#4a3a22;--pool:#3a2d48}}
+:root[data-theme="dark"]{--bg:#121416;--fg:#e8e8e8;--muted:#a0a0a0;--line:#2c3036;--card:#1a1d21;--acc:#6ea0ff;--ok:#5fd38d;--okbg:#153523;--warn:#ffb067;
+ --io:#28344a;--linear:#2b2f35;--geo:#24402a;--attn:#4a2a2a;--mix:#4a3a22;--pool:#3a2d48}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:20px 16px 8px}h1{margin:0 0 4px;font-size:22px}.sub{color:var(--muted);font-size:13px}
+main{padding:0 16px 40px;max-width:1400px;margin:0 auto}
+.controls{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.controls label{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:6px;padding:4px 8px;background:var(--card)}
+input,select{font:inherit;color:inherit;background:transparent;border:0}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+table{border-collapse:collapse;width:100%;min-width:1100px}th,td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}
+th{position:sticky;top:0;background:var(--card);cursor:pointer;font-weight:600;user-select:none}th .arrow{color:var(--muted);font-size:11px}
+tr.row{cursor:pointer}tr.row:hover{background:color-mix(in srgb,var(--acc) 7%,transparent)}
+.badge{display:inline-block;padding:1px 6px;border-radius:10px;font-size:11px;border:1px solid var(--line);color:var(--muted);margin-left:4px}
+.ok{color:var(--ok);background:var(--okbg);border-color:transparent;font-weight:600}.ref{color:var(--warn)}
+.std{color:var(--muted);font-size:11px}.na{color:var(--muted)}
+.detail td{padding:0;background:var(--bg)}.panel{padding:14px 16px;border-left:3px solid var(--acc)}
+.tabs{display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap}.tabs button{font:inherit;padding:5px 10px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:6px;cursor:pointer}
+.tabs button.active{background:var(--acc);color:#fff;border-color:var(--acc)}
+.tab{display:none}.tab.active{display:block}
+pre{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:10px;overflow:auto;max-height:520px;font-size:12px;white-space:pre}
+.specs{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px 16px}.specs div{border-bottom:1px dotted var(--line);display:flex;justify-content:space-between;gap:8px}
+.specs span:last-child{font-family:ui-monospace,monospace}
+svg text{font:12px system-ui,sans-serif;fill:var(--fg)}
+.legend{font-size:11px;color:var(--muted);margin-top:6px}.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 4px 0 10px;vertical-align:middle}
+.tracetbl td,.tracetbl th{font-size:12px;padding:4px 7px}
+@media (max-width:640px){header,main{padding-left:12px;padding-right:12px}}
+</style>
+</head>
+<body>
+<header>
+<h1>PHAT-JeT trigger-envelope leaderboard</h1>
+<div class="sub" id="sub">Loading…</div>
+</header>
+<main>
+<div class="controls">
+<label>Search <input id="q" placeholder="name / stage" size="18"></label>
+<label>Mode <select id="mode"><option value="">all</option><option value="float">float</option><option value="qat">QAT</option></select></label>
+<label>N <select id="nsel"><option value="">all</option><option>32</option><option>64</option></select></label>
+<label><input type="checkbox" id="onlyenv"> only designs inside the envelope</label>
+<label><input type="checkbox" id="showref" checked> show references</label>
+</div>
+<div class="tablewrap"><table id="tbl"><thead><tr>
+<th data-k="name">Model <span class="arrow"></span></th><th data-k="stage">Stage</th><th data-k="N">N</th><th data-k="mode">Mode</th>
+<th data-k="test_acc">Test acc (%)</th><th data-k="test_auc">AUC</th><th data-k="rej_W">Rej W</th><th data-k="rej_Z">Rej Z</th><th data-k="rej_t">Rej t</th><th data-k="avg_bg_rej">Avg rej</th>
+<th data-k="params">Params</th><th data-k="lut">LUT</th><th data-k="lut_pct">% VU13P</th><th data-k="ff">FF</th><th>DSP</th><th>BRAM</th><th data-k="stages">Stages</th><th data-k="latency_ns">Latency (ns)</th><th>II</th>
+</tr></thead><tbody id="body"></tbody></table></div>
+<div class="legend">Accuracies on the 260k held-out test set; rejection = 1/FPR at 80% signal efficiency vs q/g background (paper definition). FPGA columns: da4ml estimates at 300 MHz, hard_dc=2 (post-route only where marked). Envelope: ≤173k LUT (10% VU13P), &lt;30 stages, II=1, ≥80.9% (N=64) / ≥78.0% (N=32).</div>
+</main>
+<script>
+const KINDS={io:'var(--io)',linear:'var(--linear)',geo:'var(--geo)',attn:'var(--attn)',mix:'var(--mix)',pool:'var(--pool)'};
+let DATA=null,sortK='test_acc',sortDir=-1,open=new Set();
+const fmt=(v,d=2)=>v==null||isNaN(v)?'<span class="na">–</span>':Number(v).toFixed(d);
+const fint=v=>v==null?'<span class="na">–</span>':Math.round(v).toLocaleString();
+function hw(e){ if(e.best_in_envelope) return e.best_in_envelope; if(e.traced&&e.traced.length){ return e.traced.reduce((a,b)=>b.test_acc>a.test_acc?b:a); } return null; }
+function flat(e){ const t=hw(e); const r=e.bg_rej||(e.seeds&&e.seeds.find(s=>s.bg_rej)||{}).bg_rej||(t&&t.bg_rej)||{};
+  return {...e, test_acc:(e.test_acc!=null?e.test_acc:(t?t.test_acc:null)), rej_W:r.W, rej_Z:r.Z, rej_t:r.t, avg_bg_rej:e.avg_bg_rej!=null?e.avg_bg_rej:(t?t.avg_bg_rej:null),
+   lut:t?t.lut:null, lut_pct:t?t.lut_pct:null, ff:t?t.ff:null, stages:t?t.stages:null, latency_ns:t?t.latency_ns:null, inenv:!!(t&&t.in_envelope&&t.test_acc>=(e.N==32?0.78:0.809)), hwrow:t}; }
+function render(){
+  const q=document.getElementById('q').value.toLowerCase(), mode=document.getElementById('mode').value, n=document.getElementById('nsel').value;
+  const onlyenv=document.getElementById('onlyenv').checked, showref=document.getElementById('showref').checked;
+  let rows=DATA.entries.map(flat).filter(e=>(!q||(e.name+e.stage).toLowerCase().includes(q))&&(!mode||e.mode===mode)&&(!n||String(e.N)===n)&&(!onlyenv||e.inenv)&&(showref||!e.reference));
+  rows.sort((a,b)=>{const x=a[sortK],y=b[sortK]; if(x==null&&y==null)return 0; if(x==null)return 1; if(y==null)return -1; return (x>y?1:x<y?-1:0)*sortDir;});
+  const tb=document.getElementById('body'); tb.innerHTML='';
+  for(const e of rows){
+    const tr=document.createElement('tr'); tr.className='row'; tr.dataset.id=e.id;
+    const prog=e.n_seeds? (e.n_done<e.n_seeds?`<span class="badge">${e.n_done}/${e.n_seeds} seeds</span>`:'') : '';
+    tr.innerHTML=`<td>${e.name}${e.reference?' <span class="badge ref">reference</span>':''}${e.inenv?' <span class="badge ok">in envelope</span>':''}${prog}</td><td>${e.stage}</td><td>${e.N}</td><td>${e.mode}</td>
+      <td>${e.test_acc!=null?(100*e.test_acc).toFixed(2):'<span class="na">–</span>'}${e.test_acc_std!=null?` <span class="std">±${(100*e.test_acc_std).toFixed(2)}</span>`:''}</td>
+      <td>${fmt(e.test_auc,4)}</td><td>${fmt(e.rej_W,1)}</td><td>${fmt(e.rej_Z,1)}</td><td>${fmt(e.rej_t,1)}</td><td>${fmt(e.avg_bg_rej,1)}</td>
+      <td>${fint(e.params)}</td><td>${fint(e.lut)}</td><td>${fmt(e.lut_pct,1)}</td><td>${fint(e.ff)}</td><td>${e.hwrow?0:'<span class="na">–</span>'}</td><td>${e.hwrow?0:'<span class="na">–</span>'}</td>
+      <td>${e.stages??'<span class="na">–</span>'}</td><td>${fmt(e.latency_ns,1)}</td><td>${e.hwrow?1:'<span class="na">–</span>'}</td>`;
+    tr.onclick=()=>{open.has(e.id)?open.delete(e.id):open.add(e.id); render();};
+    tb.appendChild(tr);
+    if(open.has(e.id)){const d=document.createElement('tr'); d.className='detail'; d.innerHTML=`<td colspan="19">${detail(e)}</td>`; tb.appendChild(d); wire(d,e);}
+  }
+  document.querySelectorAll('th[data-k]').forEach(th=>{th.querySelector('.arrow')&&(th.querySelector('.arrow').textContent=''); if(th.dataset.k===sortK){let a=th.querySelector('.arrow'); if(!a){a=document.createElement('span');a.className='arrow';th.appendChild(a);} a.textContent=sortDir>0?' ▲':' ▼';}});
+}
+function svgDiagram(blocks){ if(!blocks) return ''; const w=190,h=34,gap=26; const W=Math.min(blocks.length,5)*(w+gap), rows=Math.ceil(blocks.length/5), H=rows*(h+28)+10; let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px" role="img" aria-label="model block diagram">`;
+  blocks.forEach((b,i)=>{const r=Math.floor(i/5), c=i%5, x=c*(w+gap), y=r*(h+28)+6; s+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${KINDS[b[1]]||KINDS.linear}" stroke="var(--line)"/><text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle">${b[0]}</text>`;
+    if(i<blocks.length-1){ if(c<4) s+=`<path d="M${x+w} ${y+h/2} l${gap-4} 0" stroke="var(--muted)" marker-end="url(#a)"/>`; else s+=`<path d="M${x+w/2} ${y+h} l0 10 L${0+w/2} ${y+h+10} l0 ${12}" fill="none" stroke="var(--muted)" marker-end="url(#a)"/>`; }});
+  return s+`<defs><marker id="a" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0 0L6 3L0 6z" fill="var(--muted)"/></marker></defs></svg>
+  <div class="legend">Residual connections are implied around GMP / attention / global stage / FFN.<i style="background:var(--io)"></i>I/O<i style="background:var(--linear)"></i>constant-weight<i style="background:var(--geo)"></i>geometry (GMP)<i style="background:var(--attn)"></i>attention (act×act)<i style="background:var(--mix)"></i>mixing/broadcast<i style="background:var(--pool)"></i>pooling</div>`; }
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+function detail(e){
+  const c=e.config||{}; const specs=Object.entries(c).filter(([k,v])=>!['out','resume','max_jets'].includes(k)).map(([k,v])=>`<div><span>${k}</span><span>${esc(JSON.stringify(v))}</span></div>`).join('');
+  const seeds=(e.seeds||[]).map(s=>`<div><span>${s.seed}${s.done?'':' (running, ep '+(s.epochs||0)+')'}</span><span>${s.test_acc!=null?(100*s.test_acc).toFixed(2)+'%':(s.running_val!=null?'val '+(100*s.running_val).toFixed(2)+'%':'–')}${s.running_ebops?' · '+s.running_ebops.toExponential(2)+' EBOPs':''}</span></div>`).join('');
+  const tr=(e.traced||[]).length?`<h4>Traced checkpoints (da4ml, 300 MHz)</h4><table class="tracetbl"><tr><th>checkpoint</th><th>test acc</th><th>avg rej</th><th>EBOPs</th><th>LUT</th><th>% VU13P</th><th>FF</th><th>stages</th><th>ns</th><th>envelope</th></tr>${e.traced.map(t=>`<tr><td style="text-align:left">${t.ckpt}</td><td>${t.test_acc!=null?(100*t.test_acc).toFixed(2):'–'}</td><td>${fmt(t.avg_bg_rej,1)}</td><td>${t.ebops?t.ebops.toExponential(2):'–'}</td><td>${fint(t.lut)}</td><td>${fmt(t.lut_pct,1)}</td><td>${fint(t.ff)}</td><td>${t.stages}</td><td>${fmt(t.latency_ns,1)}</td><td>${t.in_envelope?'<span class="badge ok">yes</span>':'no'}</td></tr>`).join('')}</table>`:'';
+  const par=(e.seeds||[]).filter(s=>s.pareto&&s.pareto.length).map(s=>`<div class="legend">${s.seed} Pareto front: ${s.pareto.length} points, EBOPs ${s.pareto[0].ebops.toExponential(2)} – ${s.pareto[s.pareto.length-1].ebops.toExponential(2)}, best val ${(100*Math.max(...s.pareto.map(p=>p.val_acc))).toFixed(2)}%</div>`).join('');
+  const code=e.reference?'':`<p><b>Training command</b></p><pre>${esc(e.command||'')}</pre><p><b>scripts/phat_variants.py</b> (model builder — all variants are built by <code>build_variant</code>)</p><pre>${esc((DATA.code||{})['phat_variants.py']||'')}</pre><p><b>scripts/train_variant.py</b></p><pre>${esc((DATA.code||{})['train_variant.py']||'')}</pre>`;
+  return `<div class="panel"><div class="tabs"><button data-t="o" class="active">Overview</button><button data-t="d">Diagram</button><button data-t="s">Specs</button><button data-t="c">Code</button></div>
+   <div class="tab active" data-t="o"><p>${esc(e.description||'')}</p><div class="specs">${seeds}</div>${par}${tr}</div>
+   <div class="tab" data-t="d">${svgDiagram(e.diagram)}</div>
+   <div class="tab" data-t="s"><div class="specs">${specs||'<i>reference entry</i>'}</div></div>
+   <div class="tab" data-t="c">${code||'<i>literature value</i>'}</div></div>`;
+}
+function wire(d){ d.querySelectorAll('.tabs button').forEach(b=>b.onclick=ev=>{ev.stopPropagation(); d.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('active',x===b)); d.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.t===b.dataset.t));}); d.querySelector('.panel').onclick=ev=>ev.stopPropagation(); }
+document.querySelectorAll('th[data-k]').forEach(th=>th.onclick=()=>{ if(sortK===th.dataset.k) sortDir*=-1; else {sortK=th.dataset.k; sortDir=['name','stage','mode'].includes(sortK)?1:-1;} render(); });
+['q','mode','nsel','onlyenv','showref'].forEach(id=>document.getElementById(id).addEventListener('input',render));
+fetch('data.json?'+Date.now()).then(r=>r.json()).then(d=>{DATA=d; const n=d.entries.filter(e=>!e.reference).length; document.getElementById('sub').textContent=`${n} models · generated ${d.generated} · click a row for diagram, specs, explanation and code · research log in NOTES.md`; render();}).catch(e=>{document.getElementById('sub').textContent='data.json not found yet';});
+</script>
+</body>
+</html>
