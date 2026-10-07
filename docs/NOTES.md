@@ -216,3 +216,17 @@ are read-only inputs.
 - Crash class: editing scripts on the volume while jobs run → Keras `could not get source code` when saving a
   checkpoint (lambda GMP indicators). Jobs now snapshot scripts/ into runs/_snapshots/<id>/ at start.
   Resubmitted q5 lg8c-kd. q1/q32-t80k-prot finished: 78.45% best val, 73.8% test at the end (over-compressed).
+- TODO (user, 2026-10-07 ~04:40): add a Pareto tab to the leaderboard page: selectable x-axis (LUT, latency ns, stages, FF, EBOPs, params) and y-axis (test acc, avg bg rejection), envelope limits per axis, reference points, hover details; built from data.json.
+
+## 2026-10-07 ~06:30 — first design inside the envelope (N=32) and per-slot weights change the game
+- **q6/q32-lg-relu-t40k-kd epoch 455: 78.13% test, 169,370 LUT (9.8% VU13P), 13 stages, 43 ns, II=1, 0 DSP/BRAM**
+  — inside the CTL2 envelope and above JEDI-Linear's N=32 number (78.0%; theirs is 45k LUT post-route though).
+  Attention-free, ReLU embedding, 8×8 GMP grid, token mixer, distilled. Needs: Verilog + bit-exact check, 2nd seed.
+- Per-slot weights (q7, pT-sorted, ReLU, distilled, N=64): 80.5% @ 330k EBOPs, 80.0% @ 253k, 79.0% @ 167k —
+  vs shared weights needing ~400-500k EBOPs for 79%. N=32 per-slot: 78.5% @ 262k. Traces running.
+- Finished 2000-epoch arms collapse at the end when the target is below the knee (q3-00, q5, q6-t40k/t60k):
+  the useful points are the Pareto checkpoints on the way down, which is what we trace.
+- Launched **q8** (8 arms, 3000 epochs where attention-free): per-slot attention-free at 150k/200k EBOPs,
+  per-slot 5×5 grid, per-slot attention-on-32 + mixer at 200k/300k, N=32 per-slot at 100k/150k, N=32 per-slot full.
+- Float (f6, per-slot, pT-sorted, ReLU): attention-free 80.1, 5×5 80.1, Linformer 80.2, att32+mixer 80.6, full 80.9;
+  N=32 attention-free 78.6, full 79.2. Unsharing costs ≤0.3 in float.
