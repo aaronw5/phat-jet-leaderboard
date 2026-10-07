@@ -129,6 +129,7 @@ def main():
     p.add_argument("--attn_particles", type=int, default=0, help="local attention over the leading K particles only")
     p.add_argument("--share_qk", action="store_true")
     p.add_argument("--no_head1", action="store_true")
+    p.add_argument("--unshared", action="store_true", help="position-specific weights in embed/GMP-pointwise/FFN (JEDI-style)")
     p.add_argument("--w_l1", type=float, default=0.0, help="L1 on kernels (sparsity; zero weights are free in RTL)")
     # training
     p.add_argument("--epochs", type=int, default=300)

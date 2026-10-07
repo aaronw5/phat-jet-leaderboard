@@ -33,6 +33,27 @@ def _dense(units, q, activation=None, name=None):
     return layers.Dense(units, activation=activation, name=name)
 
 
+UNSHARED = {"on": False}
+
+
+def _pdense(units, q, activation=None, name=None):
+    """Per-particle Dense: shared weights (default) or position-specific weights when UNSHARED is on.
+    Returns a callable taking the [B,N,F] tensor (N must be static for the per-slot kernel)."""
+    if not UNSHARED["on"]:
+        return _dense(units, q, activation=activation, name=name)
+
+    def apply(x):
+        N = x.shape[1]
+        if q:
+            from hgq.layers import QEinsumDense
+            L = QEinsumDense("bnf,nfd->bnd", output_shape=(N, units), activation=activation, bias_axes="nd", name=name)
+        else:
+            L = layers.EinsumDense("bnf,nfd->bnd", output_shape=(N, units), activation=activation, bias_axes="nd", name=name)
+        return L(x)
+
+    return apply
+
+
 def _einsum(eq, xs, q, name=None):
     if q:
         from hgq.layers import QEinsum
@@ -180,8 +201,9 @@ def build_variant(
     num_particles=64, d_model=16, num_heads=4, patch_size=8, n_classes=5, quantized=False,
     gmp_mode="grid", gmp_edges=None, gmp_bins=8, gmp_bounds=1.6, gmp_kernel=3, gmp_channels=None,
     local_mode="mha", global_mode="mha", ffn_mult=1, pre_norm="tanh", attn_bits=None,
-    parallel_attn=False, attn_particles=None, share_qk=False, use_head1=True, linf_k=4, name=None,
+    parallel_attn=False, attn_particles=None, share_qk=False, use_head1=True, linf_k=4, unshared=False, name=None,
 ):
+    UNSHARED["on"] = bool(unshared)
     """attn_particles: if set (< num_particles), local attention runs only over the leading
     `attn_particles` (pT/kT-ordered head); the soft tail bypasses it (physics-informed pruning)."""
     q = quantized
@@ -195,9 +217,9 @@ def build_variant(
     eta, phi = feats[..., 1], feats[..., 2]
     # da4ml allows only ReLU inline; any other activation must be its own unary-LUT layer.
     if pre_norm in (None, "relu"):
-        x = _dense(d_model, q, activation=pre_norm, name="embed")(feats)
+        x = _pdense(d_model, q, activation=pre_norm, name="embed")(feats)
     else:
-        x = _dense(d_model, q, name="embed")(feats)
+        x = _pdense(d_model, q, name="embed")(feats)
         if q:
             from hgq.layers import QUnaryFunctionLUT
             x = QUnaryFunctionLUT(getattr(ops, pre_norm), name="embed_act")(x)
@@ -208,7 +230,7 @@ def build_variant(
         xin = x if gmp_channels == d_model else x[..., :gmp_channels]
         fn = gmp_grid if gmp_mode == "grid" else gmp_sep
         msg = fn(xin, eta, phi, gmp_channels, q, gmp_edges, gmp_kernel)
-        msg = _dense(d_model, q, name="gmp_pointwise")(msg)
+        msg = _pdense(d_model, q, name="gmp_pointwise")(msg)
         x = x + msg
 
     x0 = x
@@ -262,8 +284,8 @@ def build_variant(
         x = x + msg
 
     if ffn_mult:
-        h = _dense(ffn_mult * d_model, q, activation="relu", name="ffn1")(x)
-        x = x + _dense(d_model, q, name="ffn2")(h)
+        h = _pdense(ffn_mult * d_model, q, activation="relu", name="ffn1")(x)
+        x = x + _pdense(d_model, q, name="ffn2")(h)
 
     if q:
         from hgq.layers import QSum
@@ -305,7 +327,7 @@ def kw_from_args(a):
                 global_mode=g("global_mode"), ffn_mult=g("ffn_mult"), pre_norm=g("pre_norm") or None,
                 attn_bits=g("attn_bits"), parallel_attn=bool(g("parallel_attn")),
                 attn_particles=g("attn_particles") or None, share_qk=bool(g("share_qk")),
-                use_head1=not g("no_head1"), linf_k=g("linf_k") or 4)
+                use_head1=not g("no_head1"), linf_k=g("linf_k") or 4, unshared=bool(g("unshared")))
 
 
 def build_q_from_args(a):

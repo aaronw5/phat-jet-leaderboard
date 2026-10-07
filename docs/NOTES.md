@@ -206,3 +206,13 @@ are read-only inputs.
   kept q3-00, q5-01, q5-03 running as tanh references.
 - Traces of q3-00 so far (tanh): 79.1% @ 752k, 78.9% @ 709k, 76.7% @ 476k, 74.0% @ 381k LUT; 13–15 stages.
 - Also: single-head attention −0.8 (80.5); no hidden head −0.3 (80.94); N=32 pT-sorted 79.0 (kT 79.3).
+- 05:40 — QAT curves: every variant holds ≈79% down to ~400k EBOPs then collapses (q3-00: 54% @ 74k; q5 lg5-kd
+  77.9% @ 423k; q6 N=32 lg-relu-kd 78.3% @ 365k). JEDI-Linear sits at 80.4% @ 140k EBOPs. Structural difference:
+  JEDI's per-particle layers have position-specific weights, so with pT-sorted input the regularizer prunes the
+  soft slots; PHAT-JeT shares one Dense across all slots (no hardware saving from sharing in an unrolled design).
+  Added `--unshared` (embed / GMP pointwise / FFN as per-slot QEinsumDense). Launched **f6** (8 float configs,
+  pT-sorted, ReLU) and **q7** (4 distilled QAT arms). Linformer N=64 k=4 1-head = 80.2 ± 0.1 (3.0k params);
+  k=8 4-head 80.2; N=32 k=8 78.5.
+- Crash class: editing scripts on the volume while jobs run → Keras `could not get source code` when saving a
+  checkpoint (lambda GMP indicators). Jobs now snapshot scripts/ into runs/_snapshots/<id>/ at start.
+  Resubmitted q5 lg8c-kd. q1/q32-t80k-prot finished: 78.45% best val, 73.8% test at the end (over-compressed).
