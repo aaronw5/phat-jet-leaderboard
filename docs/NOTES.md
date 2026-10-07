@@ -260,3 +260,17 @@ and per-slot attention-on-32 at 250–350k EBOPs (float 80.9 / 80.6), second see
   /usr/bin/g++ throughout; emulation rerunning for the two in-envelope designs.
 - q8/q9 (per-slot, N=64, val acc): attention-free 200k-target 80.64% @ 381k EBOPs (≥80% @ 281k); 250k-target 80.70%
   @ 436k; d=24 80.87% @ 620k; attention-on-32+mixer 80.7% @ 780k; full 80.5% @ 1.6M. Tracing the 250–450k band.
+
+## 2026-10-07 ~08:30 — bit-exact RTL for both in-envelope designs
+| design | test acc | avg rej | LUT | % | FF | stages | latency | Verilator vs Keras (512 jets) |
+|---|---|---|---|---|---|---|---|---|
+| N=64 per-slot attention-free, distilled (q7/q64-u-lg-t100k-kd ep508) | 80.31% | 52.1 | 168,614 | 9.8 | 114,995 | 12 | 40 ns | max err 0.0, argmax 100% |
+| N=32 per-slot attention-free, distilled (q7/q32-u-lg-t40k-kd ep604) | 78.12% | 32.6 | 100,027 | 5.8 | 69,670 | 12 | 40 ns | max err 0.0, argmax 100% |
+Verilog + metadata in /j-jepa-vol/phat-jet-aaron/verilog/<run>__<ckpt>/ (build_vivado_prj.tcl inside, part xcvu13p-flga2577-2-e,
+3.33 ns). Verilator built with the system g++ (patched verilated.mk). Note the N=64 rejection (52) is well below the
+full float model's (66): the compressed model keeps accuracy better than W/Z/t rejection — report both.
+- More N=64 in-envelope points (q8/q9 per-slot): 80.27% @ 162k, 80.25% @ 147k, 80.19% @ 150k, 79.95% @ 140k;
+  80.42% @ 194k and 80.51% @ 232k just outside. Curve plateau ≈80.3% inside the budget → 0.6 pts short of JEDI N=64.
+- Launched **q10**: fine-tune the 80.27%@162k checkpoint at a fixed 330k-EBOPs target (1200 ep, lr 1e-3, β held)
+  with the old and a stronger teacher (f5/b64-relu 81.28%, α 0.7, T 4), and from-scratch per-slot arms with the
+  stronger teacher (8×8, 5×5, 8-channel GMP) at 330k.
