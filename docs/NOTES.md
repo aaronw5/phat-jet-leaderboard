@@ -189,3 +189,7 @@ are read-only inputs.
   rows expand to Overview / Diagram (SVG from the config) / Specs / Code (training command + builder sources).
   `publish_leaderboard.sh` regenerates and pushes; the loop runs it when results change. Older float runs were
   re-evaluated with the paper metrics (`eval_all_float.sh` → merged into result.json).
+- 04:30 — f2: attention-free + separable GMP = 79.68 ± 0.01 (< attention-free + 2-D grid 80.43, < attention-free +
+  no GMP 80.07): separable GMP hurts when there is no attention (its 1-D passes can't localize in 2-D on their own).
+  d=24 attention-free 79.2 (no gain). Launched **q5** (5 jobs): attention-free with 5×5 grid / 8×8 grid on 8 channels /
+  no GMP, targets 60k–100k EBOPs, mostly distilled. q3/q4 (separable) kept as the comparison.
