@@ -230,3 +230,21 @@ are read-only inputs.
   per-slot 5×5 grid, per-slot attention-on-32 + mixer at 200k/300k, N=32 per-slot at 100k/150k, N=32 per-slot full.
 - Float (f6, per-slot, pT-sorted, ReLU): attention-free 80.1, 5×5 80.1, Linformer 80.2, att32+mixer 80.6, full 80.9;
   N=32 attention-free 78.6, full 79.2. Unsharing costs ≤0.3 in float.
+
+## 2026-10-07 ~07:10 — INSIDE THE ENVELOPE at N=64 (per-slot weights)
+Per-slot (unshared) weights, pT-sorted, ReLU embedding, attention-free (8×8 GMP grid + token mixer), distilled
+(q7/q64-u-lg-t100k-kd and -t60k-kd), traced at 300 MHz hard_dc=2, accuracy on the full 260k test set:
+| test acc | LUT | % VU13P | stages | latency |
+|---|---|---|---|---|
+| **80.31%** | **168,614** | **9.8** | 12 | 40 ns |
+| 80.12% | 139,537 | 8.1 | 12 | 40 ns |
+| 80.01% | 141,140 | 8.2 | 12 | 40 ns |
+| 79.65% | 119,678 | 6.9 | 12 | 40 ns |
+| 78.85% | 85,516 | 4.9 | 11 | 37 ns |
+| 78.08% | 64,782 | 3.7 | 11 | 37 ns |
+| 80.41% | 184,858 | 10.7 | 13 | 43 ns (just over) |
+N=32 per-slot: 78.29% @ 154k, 78.12% @ 100k, 77.42% @ 74k. LUT/EBOPs ≈ 0.5 for per-slot models (vs 1.6 shared).
+vs JEDI-Linear: N=64 80.9% @ 71k (post-route), N=32 78.0% @ 45k. We are 0.6 pts short of the N=64 target inside
+the budget, and ~2 pts behind JEDI at equal LUT. Rebuttal number was 74.6% @ 167k.
+Next: (1) Verilog + Verilator bit-exact for the 80.31%/169k and 80.12%/140k designs; (2) q9: per-slot full model
+and per-slot attention-on-32 at 250–350k EBOPs (float 80.9 / 80.6), second seed of the winner, per-slot Linformer.
