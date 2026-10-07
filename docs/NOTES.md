@@ -295,3 +295,5 @@ full float model's (66): the compressed model keeps accuracy better than W/Z/t r
   | 32 (q8 t150k) | 78.26 | 33.7 | 134k | 99,530 | 5.8 | 13 | 43 |
   | 32 (q8 t100k) | 77.80 | 29.8 | 90k | 70,851 | 4.1 | 12 | 40 |
   Verilog + bit-exact running for the 118.8k and 99.5k designs. Still open: 80.9% at N=64 inside the budget (q11/q12).
+- 11:50 — bit-exact confirmed (512 jets, max err 0.0) for the 80.44%/118.8k (N=64) and 78.26%/99.5k (N=32) designs.
+  q8 t150k final: 79.94% @ 94,787 LUT (5.5%). q9 t300k final: 80.70% test (rej 57.5) — tracing (expected ≈170k LUT).
