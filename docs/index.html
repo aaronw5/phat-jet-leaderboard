@@ -92,7 +92,7 @@ const KINDS={io:'var(--io)',linear:'var(--linear)',geo:'var(--geo)',attn:'var(--
 let DATA=null,sortK='test_acc',sortDir=-1,open=new Set();
 const fmt=(v,d=2)=>v==null||isNaN(v)?'<span class="na">–</span>':Number(v).toFixed(d);
 const fint=v=>v==null?'<span class="na">–</span>':Math.round(v).toLocaleString();
-function hw(e){ if(e.best_in_envelope) return e.best_in_envelope; if(e.traced&&e.traced.length){ return e.traced.reduce((a,b)=>b.test_acc>a.test_acc?b:a); } return null; }
+function hw(e){ if(e.best_in_envelope) return e.best_in_envelope; if(e.traced&&e.traced.length){ return e.traced.reduce((a,b)=>(b.test_acc||0)>(a.test_acc||0)?b:a); } return null; }
 function flat(e){ const t=hw(e); const r=e.bg_rej||(e.seeds&&e.seeds.find(s=>s.bg_rej)||{}).bg_rej||(t&&t.bg_rej)||{};
   return {...e, test_acc:(e.test_acc!=null?e.test_acc:(t?t.test_acc:null)), rej_W:r.W, rej_Z:r.Z, rej_t:r.t, avg_bg_rej:e.avg_bg_rej!=null?e.avg_bg_rej:(t?t.avg_bg_rej:null),
    lut:t?t.lut:null, lut_pct:t?t.lut_pct:null, ff:t?t.ff:null, stages:t?t.stages:null, latency_ns:t?t.latency_ns:null, inenv:!!(t&&t.in_envelope&&t.test_acc>=(e.N==32?0.78:0.809)), hwrow:t}; }
@@ -167,7 +167,9 @@ acc '+(100*p.test_acc).toFixed(2)+'%':''}</title>${ref?`<path d="M${X(p._x)} ${Y
 (function(){ const px=document.getElementById('px'),py=document.getElementById('py'); for(const k in METRICS){px.add(new Option(METRICS[k][0],k)); py.add(new Option(METRICS[k][0],k));} px.value='lut'; py.value='test_acc'; document.getElementById('pxlog').checked=true;
   ['px','py','pxlog','pylog','ppts','pref'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{const k=document.getElementById(id===('px')?'px':'py').value; if(id==='px') document.getElementById('pxlog').checked=METRICS[k][2]; if(id==='py') document.getElementById('pylog').checked=METRICS[k][2]; drawPareto();}));
   document.querySelectorAll('#views button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#views button').forEach(x=>x.classList.toggle('active',x===b)); document.getElementById('view-table').style.display=b.dataset.v==='table'?'':'none'; document.getElementById('view-pareto').style.display=b.dataset.v==='pareto'?'':'none'; if(b.dataset.v==='pareto') drawPareto();}); })();
-fetch('data.json?'+Date.now()).then(r=>r.json()).then(d=>{DATA=d; const n=d.entries.filter(e=>!e.reference).length; document.getElementById('sub').textContent=`${n} models · generated ${d.generated} · click a row for diagram, specs, explanation and code · research log in NOTES.md`; render();}).catch(e=>{document.getElementById('sub').textContent='data.json not found yet';});
+window.onerror=(m,s,l)=>{document.getElementById('sub').textContent='page error: '+m+' (line '+l+')';};
+function load(attempt){ fetch('data.json?'+Date.now()).then(r=>{if(!r.ok) throw new Error('HTTP '+r.status); return r.json();}).then(d=>{DATA=d; const n=d.entries.filter(e=>!e.reference).length; document.getElementById('sub').textContent=`${n} models · generated ${d.generated} · click a row for diagram, specs, explanation and code · research log in NOTES.md`; try{render();}catch(e){document.getElementById('sub').textContent='render error: '+e.message;}}).catch(e=>{document.getElementById('sub').textContent='could not load data.json ('+e.message+') — retrying…'; if(attempt<6) setTimeout(()=>load(attempt+1), 3000*(attempt+1));}); }
+load(0);
 </script>
 </body>
 </html>
