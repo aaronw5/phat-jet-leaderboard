@@ -377,3 +377,4 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
   Mean-token (q15 330k): 80.72% @ 194k. **3 blocks (q17 fronts): 80.95% @ 308.5k LUT (17.9%), 93 ns; 81.08% @ 393k,
   83 ns; 81.11% @ 500k** — beats JEDI accuracy, ~1.8× the LUT budget, within the latency limit.
   Launched **q19** (2 seeds each): pruned at 290k/305k EBOPs, winner at 340k, pruned 3-block at 250k/320k (stable lr).
+- 22:45 — mean-token q15 400k seed1: **80.94% @ 219.8k LUT (12.7%), 14 stages, 47 ns** (final 80.92% @ 221k, rej 61.2); beats JEDI accuracy at 1.27× the LUT budget. N=128 per-slot finals 80.51/80.60 (no gain over N=64).
