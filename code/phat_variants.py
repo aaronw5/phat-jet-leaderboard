@@ -201,7 +201,8 @@ def build_variant(
     num_particles=64, d_model=16, num_heads=4, patch_size=8, n_classes=5, quantized=False,
     gmp_mode="grid", gmp_edges=None, gmp_bins=8, gmp_bounds=1.6, gmp_kernel=3, gmp_channels=None,
     local_mode="mha", global_mode="mha", ffn_mult=1, pre_norm="tanh", attn_bits=None,
-    parallel_attn=False, attn_particles=None, share_qk=False, use_head1=True, linf_k=4, unshared=False, name=None,
+    parallel_attn=False, attn_particles=None, share_qk=False, use_head1=True, linf_k=4, unshared=False,
+    ffn_hidden=None, mix_hidden=None, name=None,
 ):
     UNSHARED["on"] = bool(unshared)
     """attn_particles: if set (< num_particles), local attention runs only over the leading
@@ -266,7 +267,9 @@ def build_variant(
             msg = ops.repeat(tok, patch_size, axis=1)
         elif global_mode == "mix":
             flat = ops.reshape(tok, (-1, NP * d_model))
-            mixed = _dense(NP * d_model, q, activation="relu", name="patch_mix")(flat)
+            mixed = _dense(mix_hidden or NP * d_model, q, activation="relu", name="patch_mix")(flat)
+            if mix_hidden and mix_hidden != NP * d_model:  # low-rank mixer: expand back to NP*d before the broadcast
+                mixed = _dense(NP * d_model, q, name="patch_mix2")(mixed)
             mixed = ops.reshape(mixed, (-1, NP, d_model))
             tok = _dense(d_model, q, name="patch_msg_proj")(mixed)
             msg = ops.repeat(tok, patch_size, axis=1)
@@ -283,8 +286,8 @@ def build_variant(
             raise ValueError(global_mode)
         x = x + msg
 
-    if ffn_mult:
-        h = _pdense(ffn_mult * d_model, q, activation="relu", name="ffn1")(x)
+    if ffn_hidden or ffn_mult:
+        h = _pdense(ffn_hidden or ffn_mult * d_model, q, activation="relu", name="ffn1")(x)
         x = x + _pdense(d_model, q, name="ffn2")(h)
 
     if q:
@@ -327,7 +330,8 @@ def kw_from_args(a):
                 global_mode=g("global_mode"), ffn_mult=g("ffn_mult"), pre_norm=g("pre_norm") or None,
                 attn_bits=g("attn_bits"), parallel_attn=bool(g("parallel_attn")),
                 attn_particles=g("attn_particles") or None, share_qk=bool(g("share_qk")),
-                use_head1=not g("no_head1"), linf_k=g("linf_k") or 4, unshared=bool(g("unshared")))
+                use_head1=not g("no_head1"), linf_k=g("linf_k") or 4, unshared=bool(g("unshared")),
+                ffn_hidden=g("ffn_hidden") or None, mix_hidden=g("mix_hidden") or None)
 
 
 def build_q_from_args(a):

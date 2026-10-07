@@ -123,6 +123,8 @@ def main():
     p.add_argument("--linf_k", type=int, default=4, help="Linformer projected length k")
     p.add_argument("--global_mode", default="mha", choices=["mha", "mix", "mean", "none"])
     p.add_argument("--ffn_mult", type=int, default=1)
+    p.add_argument("--ffn_hidden", type=int, default=0, help="FFN hidden width (overrides ffn_mult*d); 0 = use ffn_mult")
+    p.add_argument("--mix_hidden", type=int, default=0, help="token-mixer hidden width (low-rank mixer); 0 = NP*d")
     p.add_argument("--pre_norm", default="tanh")
     p.add_argument("--attn_bits", type=int, default=None)
     p.add_argument("--parallel_attn", action="store_true")

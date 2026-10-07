@@ -316,3 +316,11 @@ full float model's (66): the compressed model keeps accuracy better than W/Z/t r
   180–183k LUT — both ≈254k EBOPs, just over the budget (LUT ≈ 0.72×EBOPs here → budget ≈ 240k EBOPs).
   Best inside the envelope stays 80.75% @ 168.4k (q9 300k-target, 238k EBOPs). N=96/128 per-slot attention-free
   float = 79.8–80.0% (no gain over N=64 in float; QAT q13 will tell whether the extra slots help after pruning).
+- N=96 arms removed: HGQ QSum needs power-of-two scales (1/96, 1/12) → only N ∈ {32, 64, 128}.
+- 14:40 — LUT breakdown of the 80.75%/168k design (per-slot attention-free): embed ≈25k, GMP ≈8k, token mixer 37.6k,
+  msg proj 14.6k, **FFN 53.1k (32%)**, pooling/residual 23.9k, head 6.7k. Launched **f8** (float): FFN hidden 8 / no
+  FFN, low-rank mixer (hidden 32/16), mean-token global, no hidden head, combos — to free LUT for a higher EBOPs target.
+- 15:30 — f8 (per-slot attention-free, float, test): ref 80.03; FFN hidden 8 → 80.0 (free); no FFN → 79.8 (−0.2);
+  low-rank mixer (hidden 32) → 80.22 (free/better); no hidden head → 79.8 (−0.2). Pruned form (FFN 8 + mixer 32)
+  should drop ≈60k of the 168k LUT. Launched **q14**: pruned form, ensemble teacher, 5000 ep, targets 330k/380k/430k
+  EBOPs (2 seeds) + a no-FFN arm at 380k. q11 fine-tunes finished at 80.5–80.6% test.
