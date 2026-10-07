@@ -338,3 +338,27 @@ full float model's (66): the compressed model keeps accuracy better than W/Z/t r
 - f9 (float, test): 2 blocks gives no gain — winner 80.08 (1 blk 80.10), mean-token 80.36 (1 blk 80.55), pruned 80.02 (1 blk 80.15), att32+mixer 80.47. Depth does not convert latency headroom into accuracy here; LUT stays the constraint.
 - f9: **3 blocks 80.54% test** (1 blk 80.10, 2 blk 80.13) — first depth gain. Launched q17 (3-block QAT, float-init and scratch, 300k/400k, ensemble teacher) and f10 (4 blocks; 3-block mean-token and pruned).
 - f9 3-block seed1 80.36 → 3 blocks = 80.45 ± 0.09 vs 1 block 80.10 ± 0.07 (+0.35, 2 seeds). q17 3-block QAT running.
+- f10 (float, test): 4 blocks 80.50 (≈ 3 blocks 80.45; saturates), pruned 3-block 80.51 (1 blk 80.15), mean-token 3-block 80.32 (1 blk 80.55, depth hurts this form).
+
+## 2026-10-07 ~18:30 — loop paused (usage limit)
+State: GPU jobs still running on their own — q12 (5000-ep winner), q13 (ensemble teacher, N=64/128), q14 (pruned,
+higher budgets), q15 (mean-token), q16 (HGQ-LUT ×10), q17 (3-block QAT). Helper Job anrunw-helper-1 is re-tracing the
+attention-on-32 checkpoints (logs/trace_attn32b.log; slicing fixed to x[..., :K, :]). Best so far: 80.75% test @ 168,426
+LUT, 13 stages, 43 ns, bit-exact (q9/q64-u-lg-t300k-kd ep2936). To resume: trace finished q13–q17 fronts with
+scripts/trace_run.py, emit_verilog.py for any in-envelope point >80.75%, then publish_leaderboard.sh.
+- 19:30 — attention-on-32 trace failure root cause: **HGQ2 0.1.9 tracer bug** — `ReplayMerge` handles
+  `keras.layers.Concatenate` by stacking the (batch-less) inputs and calling np.concatenate(..., axis=layer.axis), so a
+  positive axis is off by one (axis=1 concatenated features). Negative axes are correct → `attn_pad` now uses axis=-2
+  (identical function, no weights). Re-tracing all att32 snapshots. Worth reporting upstream.
+
+## 2026-10-07 ~20:00 — MATCHES JEDI-Linear inside the envelope
+**q13/q64-u-lg-t330k-ens-5k seed0** (N=64, pT-sorted, per-slot weights, ReLU, attention-free, 8×8 GMP + token mixer,
+distilled from a 7-model float ensemble, 5000 epochs, EBOPs target 330k):
+| ckpt | test acc | AUC | avg rej (W/Z/t) | LUT | % VU13P | FF | stages | latency |
+|---|---|---|---|---|---|---|---|---|
+| ep 4377 | **80.89%** | 0.958 | 59.3 (79.6/80.5/17.9) | **170,414** | 9.9 | 114,518 | 13 | 43.3 ns |
+| final (ep 5000) | 80.89% | 0.958 | 60.4 | 171,130 | 9.9 | 117,630 | 13 | 43.3 ns |
+| ep 4731 | 80.85% | | | 168,804 | 9.8 | | 13 | 43 ns |
+JEDI-Linear N=64 (pT-sorted, post-route): 80.9% @ 71k LUT, 61 ns. We match accuracy (−0.01) inside the CTL2 envelope
+with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final model: argmax 100% (512 jets), max |err|
+3.8e-6 (to check: Keras float32 rounding vs a real RTL mismatch — earlier designs were exactly 0).

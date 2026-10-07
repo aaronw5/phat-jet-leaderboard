@@ -251,21 +251,23 @@ def build_variant(
         x0 = x
         if local_mode == "linf":  # Linformer over the leading K particles (global, no patches)
             K = attn_particles or num_particles
-            xa = x if K == num_particles else x[:, :K, :]
+            xa = x if K == num_particles else x[..., :K, :]
             a = linformer_attn(xa, d_model, num_heads, linf_k, q, "local_attn" + S, attn_bits, share_qk)
-            if K < num_particles:
-                a = layers.Concatenate(axis=1, name="attn_pad" + S)([a, ops.zeros_like(x[:, K:, :])])
-            x = x + a
+            if K < num_particles:  # residual on the leading K only; the soft tail passes through (no zeros_like: not traceable)
+                x = layers.Concatenate(axis=-2, name="attn_pad" + S)([x[..., :K, :] + a, x[..., K:, :]])
+            else:
+                x = x + a
         if local_mode == "mha":
             K = attn_particles or num_particles
             assert K % patch_size == 0 and K <= num_particles
-            xa = x if K == num_particles else x[:, :K, :]
+            xa = x if K == num_particles else x[..., :K, :]
             h4 = ops.reshape(xa, (-1, K // patch_size, patch_size, d_model))
             a = patch_mha(h4, d_model, num_heads, q, "local_attn" + S, attn_bits, share_qk)
             a = ops.reshape(a, (-1, K, d_model))
-            if K < num_particles:
-                a = layers.Concatenate(axis=1, name="attn_pad" + S)([a, ops.zeros_like(x[:, K:, :])])
-            x = x + a
+            if K < num_particles:  # residual on the leading K only; the soft tail passes through (no zeros_like: not traceable)
+                x = layers.Concatenate(axis=-2, name="attn_pad" + S)([x[..., :K, :] + a, x[..., K:, :]])
+            else:
+                x = x + a
 
         if global_mode != "none":
             src = x0 if parallel_attn else x
