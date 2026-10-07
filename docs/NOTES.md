@@ -297,3 +297,6 @@ full float model's (66): the compressed model keeps accuracy better than W/Z/t r
   Verilog + bit-exact running for the 118.8k and 99.5k designs. Still open: 80.9% at N=64 inside the budget (q11/q12).
 - 11:50 — bit-exact confirmed (512 jets, max err 0.0) for the 80.44%/118.8k (N=64) and 78.26%/99.5k (N=32) designs.
   q8 t150k final: 79.94% @ 94,787 LUT (5.5%). q9 t300k final: 80.70% test (rej 57.5) — tracing (expected ≈170k LUT).
+- 12:10 — **Best in-envelope: 80.75% test @ 168,426 LUT (9.7%), FF 116k, 13 stages, 43.3 ns** (q9/q64-u-lg-t300k-kd
+  epoch 2936; neighbours 80.71–80.74% @ 168k; final 80.70% @ 170.4k). 0.15 pts from JEDI-Linear N=64 (80.9%).
+  Verilog + bit-exact running. q10 lg5 (stronger teacher) final 80.52%.
