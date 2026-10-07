@@ -43,6 +43,17 @@ svg text{font:12px system-ui,sans-serif;fill:var(--fg)}
 <header>
 <h1>PHAT-JeT trigger-envelope leaderboard</h1>
 <div class="sub" id="sub">Loading…</div>
+<details class="sub" style="margin-top:6px"><summary>Glossary — what the model names mean</summary>
+<ul style="margin:6px 0 0 18px;padding:0;max-width:900px">
+<li><b>N</b>: number of leading constituents fed to the model (kT-sorted unless marked pT-sorted).</li>
+<li><b>patch attention (P, heads)</b>: PHAT-JeT's exact self-attention inside groups of P consecutive particles; "on leading K" = only the K hardest particles go through attention, the rest bypass it.</li>
+<li><b>Linformer attention (k)</b>: keys/values compressed from N particles to k rows with fixed (constant-weight) projections, so the attention is N×k instead of N×N.</li>
+<li><b>no attention</b>: both attention blocks removed; the model is embedding → GMP → token mixing → FFN → pooling → head (no activation×activation multiplies at all).</li>
+<li><b>global stage</b>: how patches talk to each other — <i>patch-token attention</i> (paper), <i>constant token mixer</i> (a fixed-weight MLP over the patch tokens), <i>mean-token broadcast</i>, or none.</li>
+<li><b>GMP</b>: geometric message passing on a static (η,φ) grid — <i>G×G grid</i> (2-D), <i>separable</i> (two 1-D passes, ~8× cheaper), or none.</li>
+<li><b>QAT → X EBOPs</b>: quantization-aware training (HGQ2) with the bit-operation budget steered to X; <i>distilled</i> = trained against a float teacher's outputs; <i>attention protected</i> = minimum bit widths on the attention lanes.</li>
+<li><b>Stage</b>: f* = float screens, q* = quantized (QAT) runs. The small grey tag is the internal run id.</li>
+</ul></details>
 </header>
 <main>
 <div class="controls">
@@ -77,7 +88,7 @@ function render(){
   for(const e of rows){
     const tr=document.createElement('tr'); tr.className='row'; tr.dataset.id=e.id;
     const prog=e.n_seeds? (e.n_done<e.n_seeds?`<span class="badge">${e.n_done}/${e.n_seeds} seeds</span>`:'') : '';
-    tr.innerHTML=`<td>${e.name}${e.reference?' <span class="badge ref">reference</span>':''}${e.inenv?' <span class="badge ok">in envelope</span>':''}${prog}</td><td>${e.stage}</td><td>${e.N}</td><td>${e.mode}</td>
+    tr.innerHTML=`<td>${e.name}${e.tag?` <span class="badge" title="internal run id">${e.tag}</span>`:''}${e.reference?' <span class="badge ref">reference</span>':''}${e.inenv?' <span class="badge ok">in envelope</span>':''}${prog}</td><td>${e.stage}</td><td>${e.N}</td><td>${e.mode}</td>
       <td>${e.test_acc!=null?(100*e.test_acc).toFixed(2):'<span class="na">–</span>'}${e.test_acc_std!=null?` <span class="std">±${(100*e.test_acc_std).toFixed(2)}</span>`:''}</td>
       <td>${fmt(e.test_auc,4)}</td><td>${fmt(e.rej_W,1)}</td><td>${fmt(e.rej_Z,1)}</td><td>${fmt(e.rej_t,1)}</td><td>${fmt(e.avg_bg_rej,1)}</td>
       <td>${fint(e.params)}</td><td>${fint(e.lut)}</td><td>${fmt(e.lut_pct,1)}</td><td>${fint(e.ff)}</td><td>${e.hwrow?0:'<span class="na">–</span>'}</td><td>${e.hwrow?0:'<span class="na">–</span>'}</td>

@@ -182,3 +182,10 @@ are read-only inputs.
   cleanly (PREALLOCATE=false, no XLA flag; V100 stays excluded) and resubmitted the failed/pending jobs
   (f1 h1/h2/shareqk/att16 -r10, nohead1/att32-h2-shareqk -r9, f2 gmix-sep -r4, f3 -r2, f4 -r2, q1/q3/q4 -r4).
   All deletes are my own `anrunw-*` jobs only.
+- 04:00 — **Leaderboard**: https://aaronw5.github.io/phat-jet-leaderboard/ (repo aaronw5/phat-jet-leaderboard, Pages
+  from main:/docs, commits authored by aaronw5). `scripts/make_leaderboard.py` collects every run (float: mean ± std
+  over seeds of test accuracy / AUC / W,Z,t background rejection @80% TPR; QAT: every traced checkpoint with EBOPs,
+  LUT, %VU13P, FF, DSP, BRAM, stages, latency, II, envelope flag) + reference rows (paper, JEDI-Linear, rebuttal);
+  rows expand to Overview / Diagram (SVG from the config) / Specs / Code (training command + builder sources).
+  `publish_leaderboard.sh` regenerates and pushes; the loop runs it when results change. Older float runs were
+  re-evaluated with the paper metrics (`eval_all_float.sh` → merged into result.json).
