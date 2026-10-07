@@ -274,3 +274,8 @@ full float model's (66): the compressed model keeps accuracy better than W/Z/t r
 - Launched **q10**: fine-tune the 80.27%@162k checkpoint at a fixed 330k-EBOPs target (1200 ep, lr 1e-3, β held)
   with the old and a stronger teacher (f5/b64-relu 81.28%, α 0.7, T 4), and from-scratch per-slot arms with the
   stronger teacher (8×8, 5×5, 8-channel GMP) at 330k.
+- 09:50 — **New best inside the envelope: 80.46% test @ 141,858 LUT (8.2%), 13 stages, 43 ns** (q9/q64-u-lg-t250k-kd
+  epoch 2357; 80.35% @ 141.8k at ep 2318). The 3000-epoch run is still improving (80.57% val @ 195k EBOPs at ep 2742).
+  Fine-tune arms (q10): 79.97% @ 110k LUT, 80.05% @ 143k. d=24 fine-tune 80.38% val @ 333k EBOPs.
+  Launched **q12**: 5000-epoch runs of the winning config (targets 200k/250k, both teachers, 2 seeds).
+  Verilog + bit-exact running for the ep2357 design (copy in runs/_seeds/best_n64_ep2357.keras).
