@@ -193,3 +193,16 @@ are read-only inputs.
   no GMP 80.07): separable GMP hurts when there is no attention (its 1-D passes can't localize in 2-D on their own).
   d=24 attention-free 79.2 (no gain). Launched **q5** (5 jobs): attention-free with 5×5 grid / 8×8 grid on 8 channels /
   no GMP, targets 60k–100k EBOPs, mostly distilled. q3/q4 (separable) kept as the comparison.
+
+## 2026-10-07 ~05:00 — the tanh embedding is 64% of the LUTs
+- Component trace of q3/q64-lgsep-t60k epoch 402 (420k EBOPs, 729k LUT): embed Dense 45k, **embed tanh LUT 464k**,
+  separable GMP ≈15k, patch tokens+mixer 51k, msg proj 16k, FFN 105k, pooling 27k, head 6k. The tanh is a
+  per-element lookup table (64×16 tables addressed by a wide input) that the EBOPs penalty does not see; the
+  "cheap" architecture was dominated by one activation. Zihan's embedding was 37k total, so his tanh must have had
+  a narrow input or different placement.
+- Switching the embedding to ReLU (inline, LUT-free; what JEDI-Linear uses). Launched **f5** (float check, 8 configs
+  × 2 seeds) and **q6** (6 distilled QAT arms with ReLU: attention-free 8×8 / 5×5 grid, attention-on-32 + mixer,
+  N=32 full and attention-free). Cancelled the dominated tanh arms (q3 -r2/-r4, q3-01, all q4, pending q5);
+  kept q3-00, q5-01, q5-03 running as tanh references.
+- Traces of q3-00 so far (tanh): 79.1% @ 752k, 78.9% @ 709k, 76.7% @ 476k, 74.0% @ 381k LUT; 13–15 stages.
+- Also: single-head attention −0.8 (80.5); no hidden head −0.3 (80.94); N=32 pT-sorted 79.0 (kT 79.3).
