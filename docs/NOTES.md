@@ -362,3 +362,7 @@ distilled from a 7-model float ensemble, 5000 epochs, EBOPs target 330k):
 JEDI-Linear N=64 (pT-sorted, post-route): 80.9% @ 71k LUT, 61 ns. We match accuracy (−0.01) inside the CTL2 envelope
 with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final model: argmax 100% (512 jets), max |err|
 3.8e-6 (to check: Keras float32 rounding vs a real RTL mismatch — earlier designs were exactly 0).
+- 20:30 — **80.89% / 170,414-LUT design (q13 ep4377) Verilator-verified bit-exact on 2000 jets (max err 0.0, argmax
+  100%)**; the earlier 3.8e-6 on the final model is likely Keras float32 rounding. Pruned 430k-target (q14 seed1) reaches
+  80.85–80.86% but at 224–230k LUT / 15 stages — outside. q12 5000-ep: 80.53% @ 128.2k LUT (7.4%), 12 stages.
+  Attention-on-32 now traces (HGQ Concatenate bug worked around); results in results/attn32_traces.json and the leaderboard.
