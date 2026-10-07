@@ -300,3 +300,6 @@ full float model's (66): the compressed model keeps accuracy better than W/Z/t r
 - 12:10 — **Best in-envelope: 80.75% test @ 168,426 LUT (9.7%), FF 116k, 13 stages, 43.3 ns** (q9/q64-u-lg-t300k-kd
   epoch 2936; neighbours 80.71–80.74% @ 168k; final 80.70% @ 170.4k). 0.15 pts from JEDI-Linear N=64 (80.9%).
   Verilog + bit-exact running. q10 lg5 (stronger teacher) final 80.52%.
+- 12:40 — 80.75%/168.4k design Verilator-verified bit-exact (512 jets, max err 0.0). q11 fine-tune (320k target from
+  the t250k checkpoint) final 80.56% test. Leaderboard page now shows load/render errors in the subtitle and retries
+  data.json (user reported it stopped working on a phone, likely during a republish).
