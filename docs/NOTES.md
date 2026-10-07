@@ -284,3 +284,6 @@ full float model's (66): the compressed model keeps accuracy better than W/Z/t r
   checkpoint to runs/_traced/ (Pareto dirs drop dominated points as runs improve). Verilog + bit-exact running.
 - 10:40 — ep2760 design (80.56% @ 144.6k LUT, 12 stages, 40 ns) Verilator-verified bit-exact (512 jets, max err 0.0).
   q9/q64-u-lg-t250k-kd finished 3000 epochs: final model 80.62% test, avg rej 55.8 — tracing + Verilog for it.
+- 11:00 — **Best so far (bit-exact): 80.62% test, avg rej 55.8, 146,481 LUT (8.5%), FF 104k, 13 stages, 43.3 ns, II=1,
+  0 DSP/BRAM** — final model of q9/q64-u-lg-t250k-kd (3000 ep; snapshot runs/_traced/...__final.keras; Verilog under
+  verilog/q9_q64_u_lg_t250k_kd_seed0__runs__q9__q64_u_lg_t250k_kd__seed0__final/). 0.3 pts from the N=64 target.
