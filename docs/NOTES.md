@@ -248,3 +248,15 @@ vs JEDI-Linear: N=64 80.9% @ 71k (post-route), N=32 78.0% @ 45k. We are 0.6 pts 
 the budget, and ~2 pts behind JEDI at equal LUT. Rebuttal number was 74.6% @ 167k.
 Next: (1) Verilog + Verilator bit-exact for the 80.31%/169k and 80.12%/140k designs; (2) q9: per-slot full model
 and per-slot attention-on-32 at 250–350k EBOPs (float 80.9 / 80.6), second seed of the winner, per-slot Linformer.
+- 07:40 — q7/q64-u-lg-t100k-kd (the winner) crashed at epoch 1611/2000: `BlockingIOError: unable to lock file`
+  while writing latest.weights.h5 on CephFS (HDF5 locking vs concurrent readers). Pareto points up to 1611 are
+  intact; seed 1 (q7-01-s2) running. Future jobs set `HDF5_USE_FILE_LOCKING=FALSE`.
+- Verilator: conda gcc's 2.12 sysroot lacks `timespec_get` → build with the system g++ instead (verilator from the
+  conda env). Verilog for the 80.31%/169k and 78.12%/100k designs is written under /j-jepa-vol/phat-jet-aaron/verilog/;
+  emulation re-running.
+- 08:00 — helper pod explore-2 was killed by the admission webhook's ~6 h cap on bare pods (DeadlineExceeded);
+  helper now runs as Job `anrunw-helper-1` (7-day deadline, 16 CPU/48 GB). Verilator: conda's verilated.mk hardcodes
+  the conda compiler (whose sysroot clashes with the pod's glibc 2.31) → patched my env's verilated.mk to use
+  /usr/bin/g++ throughout; emulation rerunning for the two in-envelope designs.
+- q8/q9 (per-slot, N=64, val acc): attention-free 200k-target 80.64% @ 381k EBOPs (≥80% @ 281k); 250k-target 80.70%
+  @ 436k; d=24 80.87% @ 620k; attention-on-32+mixer 80.7% @ 780k; full 80.5% @ 1.6M. Tracing the 250–450k band.
