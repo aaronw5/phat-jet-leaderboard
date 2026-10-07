@@ -366,3 +366,14 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
   100%)**; the earlier 3.8e-6 on the final model is likely Keras float32 rounding. Pruned 430k-target (q14 seed1) reaches
   80.85–80.86% but at 224–230k LUT / 15 stages — outside. q12 5000-ep: 80.53% @ 128.2k LUT (7.4%), 12 stages.
   Attention-on-32 now traces (HGQ Concatenate bug worked around); results in results/attn32_traces.json and the leaderboard.
+- 21:00 — q13 seed1 (same config as the 80.89% design): final 80.67% test → 80.78 ± 0.11 over 2 seeds (tracing seed1).
+- **HGQ-LUT (q16) failure**: all per-slot (unshared) LUT arms never learned (val 20% from epoch 0, before compression);
+  only lut3-att32 (shared weights) trained: front up to 80.93% val @ 970k EBOPs (tracing). Cancelled the dead arms;
+  **q18** isolates the cause: LUT with shared weights, LUT with lr 1e-3, LUT on the head only.
+- **3-block (q17) collapsed** past ~600k EBOPs (val 81% → 20% around epoch 700; β kept rising). Fronts saved up to 81.2%
+  val; tracing. Cancelled; q18 retries 3-block with lr 1e-3 and β_max 3e-6.
+- 22:00 — **Reproduced**: q13 seed1 final 80.68% @ 170,416 LUT, 13 stages (seed0 80.89% @ 170.4k) → **80.79 ± 0.11% @
+  ≈170k LUT over 2 seeds, both inside the envelope**. Pruned form (q14 330k): 80.79–80.84% @ 177–186k (just over).
+  Mean-token (q15 330k): 80.72% @ 194k. **3 blocks (q17 fronts): 80.95% @ 308.5k LUT (17.9%), 93 ns; 81.08% @ 393k,
+  83 ns; 81.11% @ 500k** — beats JEDI accuracy, ~1.8× the LUT budget, within the latency limit.
+  Launched **q19** (2 seeds each): pruned at 290k/305k EBOPs, winner at 340k, pruned 3-block at 250k/320k (stable lr).
