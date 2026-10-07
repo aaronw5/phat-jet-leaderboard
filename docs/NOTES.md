@@ -324,3 +324,17 @@ full float model's (66): the compressed model keeps accuracy better than W/Z/t r
   low-rank mixer (hidden 32) → 80.22 (free/better); no hidden head → 79.8 (−0.2). Pruned form (FFN 8 + mixer 32)
   should drop ≈60k of the 168k LUT. Launched **q14**: pruned form, ensemble teacher, 5000 ep, targets 330k/380k/430k
   EBOPs (2 seeds) + a no-FFN arm at 380k. q11 fine-tunes finished at 80.5–80.6% test.
+- 16:00 — f8: mean-token global 80.55 (> mixer 80.1), mixer hidden 16 80.3. Launched **q15**: per-slot attention-free + mean-token global + FFN 8, ensemble teacher, 5000 ep, targets 330k/400k, 2 seeds.
+
+## 2026-10-07 ~16:30 — HGQ-LUT, deeper models, attention traced
+- User: attention models had QAT but no hardware numbers → tracing all attention QAT runs (q1 full, q6/q8/q9
+  attention-on-32 + mixer, q9 per-slot full attention, q8 N=32 full) — previously skipped because they need
+  ≈800k–1.6M EBOPs for ≥80%.
+- Added `--lut_layers` (HGQ-LUT, arXiv:2604.22293: `hgq.layers.table.QDenseT`, each edge a learned table, d_hl 8,
+  table (6,5)) per role embed/ffn/mix/proj/head, and `--n_blocks` (latency is 40 ns of 100 ns → room for depth).
+- Launched **q16** (10 HGQ-LUT QAT arms, from scratch, ensemble teacher, 3000 ep): attention-free per-slot with
+  LUT on ffn+mix+head / +proj / +embed at 200–300k; mean-token; pruned; attention-on-32; Linformer; full attention;
+  N=32. Launched **f9** float: 2- and 3-block versions of the winner, mean-token, pruned, attention-on-32.
+- f9 (float, test): 2 blocks gives no gain — winner 80.08 (1 blk 80.10), mean-token 80.36 (1 blk 80.55), pruned 80.02 (1 blk 80.15), att32+mixer 80.47. Depth does not convert latency headroom into accuracy here; LUT stays the constraint.
+- f9: **3 blocks 80.54% test** (1 blk 80.10, 2 blk 80.13) — first depth gain. Launched q17 (3-block QAT, float-init and scratch, 300k/400k, ensemble teacher) and f10 (4 blocks; 3-block mean-token and pruned).
+- f9 3-block seed1 80.36 → 3 blocks = 80.45 ± 0.09 vs 1 block 80.10 ± 0.07 (+0.35, 2 seeds). q17 3-block QAT running.

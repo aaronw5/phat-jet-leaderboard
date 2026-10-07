@@ -34,6 +34,16 @@ def _dense(units, q, activation=None, name=None):
 
 
 UNSHARED = {"on": False}
+LUT = {"roles": set(), "d_hl": 8, "table": (6, 5)}  # roles: embed, ffn, mix, proj, head
+
+
+def _ldense(role, units, q, activation=None, name=None, per_particle=False):
+    """Dense, or HGQ learned-LUT dense (QDenseT: every input->output edge is a learned 1-D function stored as a
+    lookup table) when `role` is enabled and the model is quantized."""
+    if q and role in LUT["roles"]:
+        from hgq.layers.table.dense import QDenseT
+        return QDenseT(units, n_hl=1, d_hl=LUT["d_hl"], activation=activation, table_spec=LUT["table"], name=name)
+    return (_pdense if per_particle else _dense)(units, q, activation=activation, name=name)
 
 
 def _pdense(units, q, activation=None, name=None):
@@ -202,9 +212,11 @@ def build_variant(
     gmp_mode="grid", gmp_edges=None, gmp_bins=8, gmp_bounds=1.6, gmp_kernel=3, gmp_channels=None,
     local_mode="mha", global_mode="mha", ffn_mult=1, pre_norm="tanh", attn_bits=None,
     parallel_attn=False, attn_particles=None, share_qk=False, use_head1=True, linf_k=4, unshared=False,
-    ffn_hidden=None, mix_hidden=None, name=None,
+    ffn_hidden=None, mix_hidden=None, n_blocks=1, lut_layers=None, lut_dhl=8, name=None,
 ):
     UNSHARED["on"] = bool(unshared)
+    LUT["roles"] = set((lut_layers or "").split(",")) - {""}
+    LUT["d_hl"] = lut_dhl
     """attn_particles: if set (< num_particles), local attention runs only over the leading
     `attn_particles` (pT/kT-ordered head); the soft tail bypasses it (physics-informed pruning)."""
     q = quantized
@@ -227,76 +239,78 @@ def build_variant(
         else:
             x = layers.Activation(pre_norm, name="embed_act")(x)
 
-    if gmp_mode != "none":
-        xin = x if gmp_channels == d_model else x[..., :gmp_channels]
-        fn = gmp_grid if gmp_mode == "grid" else gmp_sep
-        msg = fn(xin, eta, phi, gmp_channels, q, gmp_edges, gmp_kernel)
-        msg = _pdense(d_model, q, name="gmp_pointwise")(msg)
-        x = x + msg
+    for bi in range(n_blocks):
+        S = "" if bi == 0 else f"_b{bi}"
+        if gmp_mode != "none":
+            xin = x if gmp_channels == d_model else x[..., :gmp_channels]
+            fn = gmp_grid if gmp_mode == "grid" else gmp_sep
+            msg = fn(xin, eta, phi, gmp_channels, q, gmp_edges, gmp_kernel, name="gmp" + S)
+            msg = _ldense("proj", d_model, q, name="gmp_pointwise" + S, per_particle=True)(msg)
+            x = x + msg
 
-    x0 = x
-    if local_mode == "linf":  # Linformer over the leading K particles (global, no patches)
-        K = attn_particles or num_particles
-        xa = x if K == num_particles else x[:, :K, :]
-        a = linformer_attn(xa, d_model, num_heads, linf_k, q, "local_attn", attn_bits, share_qk)
-        if K < num_particles:
-            a = layers.Concatenate(axis=1, name="attn_pad")([a, ops.zeros_like(x[:, K:, :])])
-        x = x + a
-    if local_mode == "mha":
-        K = attn_particles or num_particles
-        assert K % patch_size == 0 and K <= num_particles
-        xa = x if K == num_particles else x[:, :K, :]
-        h4 = ops.reshape(xa, (-1, K // patch_size, patch_size, d_model))
-        a = patch_mha(h4, d_model, num_heads, q, "local_attn", attn_bits, share_qk)
-        a = ops.reshape(a, (-1, K, d_model))
-        if K < num_particles:
-            a = layers.Concatenate(axis=1, name="attn_pad")([a, ops.zeros_like(x[:, K:, :])])
-        x = x + a
+        x0 = x
+        if local_mode == "linf":  # Linformer over the leading K particles (global, no patches)
+            K = attn_particles or num_particles
+            xa = x if K == num_particles else x[:, :K, :]
+            a = linformer_attn(xa, d_model, num_heads, linf_k, q, "local_attn" + S, attn_bits, share_qk)
+            if K < num_particles:
+                a = layers.Concatenate(axis=1, name="attn_pad" + S)([a, ops.zeros_like(x[:, K:, :])])
+            x = x + a
+        if local_mode == "mha":
+            K = attn_particles or num_particles
+            assert K % patch_size == 0 and K <= num_particles
+            xa = x if K == num_particles else x[:, :K, :]
+            h4 = ops.reshape(xa, (-1, K // patch_size, patch_size, d_model))
+            a = patch_mha(h4, d_model, num_heads, q, "local_attn" + S, attn_bits, share_qk)
+            a = ops.reshape(a, (-1, K, d_model))
+            if K < num_particles:
+                a = layers.Concatenate(axis=1, name="attn_pad" + S)([a, ops.zeros_like(x[:, K:, :])])
+            x = x + a
 
-    if global_mode != "none":
-        src = x0 if parallel_attn else x
-        h4 = ops.reshape(src, (-1, NP, patch_size, d_model))
-        if q:
-            from hgq.layers import QSum
-            tok = QSum(axes=2, scale=1.0 / patch_size, name="patch_tokens")(h4)
-        else:
-            tok = ops.sum(h4, axis=2) * (1.0 / patch_size)
-        if global_mode == "mha":
-            tok = token_mha(tok, d_model, num_heads, q, "patch_attn", attn_bits, share_qk)
-            tok = _dense(d_model, q, name="patch_msg_proj")(tok)
-            msg = ops.repeat(tok, patch_size, axis=1)
-        elif global_mode == "mix":
-            flat = ops.reshape(tok, (-1, NP * d_model))
-            mixed = _dense(mix_hidden or NP * d_model, q, activation="relu", name="patch_mix")(flat)
-            if mix_hidden and mix_hidden != NP * d_model:  # low-rank mixer: expand back to NP*d before the broadcast
-                mixed = _dense(NP * d_model, q, name="patch_mix2")(mixed)
-            mixed = ops.reshape(mixed, (-1, NP, d_model))
-            tok = _dense(d_model, q, name="patch_msg_proj")(mixed)
-            msg = ops.repeat(tok, patch_size, axis=1)
-        elif global_mode == "mean":
+        if global_mode != "none":
+            src = x0 if parallel_attn else x
+            h4 = ops.reshape(src, (-1, NP, patch_size, d_model))
             if q:
                 from hgq.layers import QSum
-                g = QSum(axes=1, scale=1.0 / NP, name="global_token")(tok)
+                tok = QSum(axes=2, scale=1.0 / patch_size, name="patch_tokens" + S)(h4)
             else:
-                g = ops.sum(tok, axis=1) * (1.0 / NP)
-            g = _dense(d_model, q, activation="relu", name="patch_mix")(g)
-            g = _dense(d_model, q, name="patch_msg_proj")(g)
-            msg = ops.repeat(ops.reshape(g, (-1, 1, d_model)), num_particles, axis=1)
-        else:
-            raise ValueError(global_mode)
-        x = x + msg
+                tok = ops.sum(h4, axis=2) * (1.0 / patch_size)
+            if global_mode == "mha":
+                tok = token_mha(tok, d_model, num_heads, q, "patch_attn" + S, attn_bits, share_qk)
+                tok = _dense(d_model, q, name="patch_msg_proj" + S)(tok)
+                msg = ops.repeat(tok, patch_size, axis=1)
+            elif global_mode == "mix":
+                flat = ops.reshape(tok, (-1, NP * d_model))
+                mixed = _ldense("mix", mix_hidden or NP * d_model, q, activation="relu", name="patch_mix" + S)(flat)
+                if mix_hidden and mix_hidden != NP * d_model:  # low-rank mixer: expand back to NP*d before the broadcast
+                    mixed = _dense(NP * d_model, q, name="patch_mix2" + S)(mixed)
+                mixed = ops.reshape(mixed, (-1, NP, d_model))
+                tok = _dense(d_model, q, name="patch_msg_proj" + S)(mixed)
+                msg = ops.repeat(tok, patch_size, axis=1)
+            elif global_mode == "mean":
+                if q:
+                    from hgq.layers import QSum
+                    g = QSum(axes=1, scale=1.0 / NP, name="global_token" + S)(tok)
+                else:
+                    g = ops.sum(tok, axis=1) * (1.0 / NP)
+                g = _ldense("mix", d_model, q, activation="relu", name="patch_mix" + S)(g)
+                g = _dense(d_model, q, name="patch_msg_proj" + S)(g)
+                msg = ops.repeat(ops.reshape(g, (-1, 1, d_model)), num_particles, axis=1)
+            else:
+                raise ValueError(global_mode)
+            x = x + msg
 
-    if ffn_hidden or ffn_mult:
-        h = _pdense(ffn_hidden or ffn_mult * d_model, q, activation="relu", name="ffn1")(x)
-        x = x + _pdense(d_model, q, name="ffn2")(h)
+        if ffn_hidden or ffn_mult:
+            h = _ldense("ffn", ffn_hidden or ffn_mult * d_model, q, activation="relu", name="ffn1" + S, per_particle=True)(x)
+            x = x + _ldense("ffn", d_model, q, name="ffn2" + S, per_particle=True)(h)
 
     if q:
         from hgq.layers import QSum
         pooled = QSum(axes=1, scale=1.0 / num_particles, name="agg_mean")(x)
     else:
         pooled = layers.GlobalAveragePooling1D(name="agg_mean")(x)
-    hd = _dense(d_model, q, activation="relu", name="head1")(pooled) if use_head1 else pooled
-    logits = _dense(n_classes, q, name="head_out")(hd)
+    hd = _ldense("head", d_model, q, activation="relu", name="head1")(pooled) if use_head1 else pooled
+    logits = _ldense("head", n_classes, q, name="head_out")(hd)
     return keras.Model(feats, logits, name=name or ("phat_var" + ("_q" if q else "")))
 
 
@@ -331,7 +345,8 @@ def kw_from_args(a):
                 attn_bits=g("attn_bits"), parallel_attn=bool(g("parallel_attn")),
                 attn_particles=g("attn_particles") or None, share_qk=bool(g("share_qk")),
                 use_head1=not g("no_head1"), linf_k=g("linf_k") or 4, unshared=bool(g("unshared")),
-                ffn_hidden=g("ffn_hidden") or None, mix_hidden=g("mix_hidden") or None)
+                ffn_hidden=g("ffn_hidden") or None, mix_hidden=g("mix_hidden") or None,
+                n_blocks=g("n_blocks") or 1, lut_layers=g("lut_layers") or None, lut_dhl=g("lut_dhl") or 8)
 
 
 def build_q_from_args(a):
