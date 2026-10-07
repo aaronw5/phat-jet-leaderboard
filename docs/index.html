@@ -56,6 +56,18 @@ svg text{font:12px system-ui,sans-serif;fill:var(--fg)}
 </ul></details>
 </header>
 <main>
+<div class="tabs" id="views" style="margin:10px 0"><button data-v="table" class="active">Table</button><button data-v="pareto">Pareto</button></div>
+<div id="view-pareto" style="display:none">
+ <div class="controls">
+  <label>X <select id="px"></select></label><label><input type="checkbox" id="pxlog" checked> log x</label>
+  <label>Y <select id="py"></select></label><label><input type="checkbox" id="pylog"> log y</label>
+  <label>Points <select id="ppts"><option value="traced">every traced checkpoint + float runs</option><option value="best">best per model</option></select></label>
+  <label><input type="checkbox" id="pref" checked> references</label>
+ </div>
+ <div class="tablewrap" style="padding:8px"><svg id="pareto" viewBox="0 0 960 560" width="100%" style="max-width:1100px;display:block;margin:auto"></svg></div>
+ <div class="legend" id="plegend">Each dot is a traced checkpoint (QAT) or a float run (no hardware numbers → only on accuracy/params axes). Dashed lines: envelope limits for the chosen axes. Hover a dot for details; click to open its row in the table.</div>
+</div>
+<div id="view-table">
 <div class="controls">
 <label>Search <input id="q" placeholder="name / stage" size="18"></label>
 <label>Mode <select id="mode"><option value="">all</option><option value="float">float</option><option value="qat">QAT</option></select></label>
@@ -69,8 +81,13 @@ svg text{font:12px system-ui,sans-serif;fill:var(--fg)}
 <th data-k="params">Params</th><th data-k="lut">LUT</th><th data-k="lut_pct">% VU13P</th><th data-k="ff">FF</th><th>DSP</th><th>BRAM</th><th data-k="stages">Stages</th><th data-k="latency_ns">Latency (ns)</th><th>II</th>
 </tr></thead><tbody id="body"></tbody></table></div>
 <div class="legend">Accuracies on the 260k held-out test set; rejection = 1/FPR at 80% signal efficiency vs q/g background (paper definition). FPGA columns: da4ml estimates at 300 MHz, hard_dc=2 (post-route only where marked). Envelope: ≤173k LUT (10% VU13P), &lt;30 stages, II=1, ≥80.9% (N=64) / ≥78.0% (N=32).</div>
+</div>
 </main>
 <script>
+const METRICS={test_acc:['Test accuracy (%)',v=>100*v,false],test_auc:['AUC',v=>v,false],avg_bg_rej:['Avg background rejection @80%',v=>v,true],rej_W:['Rejection W',v=>v,true],rej_Z:['Rejection Z',v=>v,true],rej_t:['Rejection t',v=>v,true],
+ lut:['LUT (da4ml est.)',v=>v,true],lut_pct:['% VU13P',v=>v,true],ff:['FF',v=>v,true],stages:['Pipeline stages',v=>v,false],latency_ns:['Latency (ns)',v=>v,false],ebops:['EBOPs',v=>v,true],params:['Parameters',v=>v,true]};
+const ENV={lut:172800,lut_pct:10,stages:30,latency_ns:100,test_acc:0.809};
+const FAM=e=>{const c=e.config||{}; if(e.reference) return 'reference'; const a=c.local==='none'?'no-attn':c.local==='linf'?'linformer':(c.attn_particles&&c.attn_particles<c.n?'attn-top'+c.attn_particles:'patch-attn'); return (c.unshared?'per-slot ':'')+a+(c.mode==='qat'?' (QAT)':' (float)');};
 const KINDS={io:'var(--io)',linear:'var(--linear)',geo:'var(--geo)',attn:'var(--attn)',mix:'var(--mix)',pool:'var(--pool)'};
 let DATA=null,sortK='test_acc',sortDir=-1,open=new Set();
 const fmt=(v,d=2)=>v==null||isNaN(v)?'<span class="na">–</span>':Number(v).toFixed(d);
@@ -120,6 +137,36 @@ function detail(e){
 function wire(d){ d.querySelectorAll('.tabs button').forEach(b=>b.onclick=ev=>{ev.stopPropagation(); d.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('active',x===b)); d.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.t===b.dataset.t));}); d.querySelector('.panel').onclick=ev=>ev.stopPropagation(); }
 document.querySelectorAll('th[data-k]').forEach(th=>th.onclick=()=>{ if(sortK===th.dataset.k) sortDir*=-1; else {sortK=th.dataset.k; sortDir=['name','stage','mode'].includes(sortK)?1:-1;} render(); });
 ['q','mode','nsel','onlyenv','showref'].forEach(id=>document.getElementById(id).addEventListener('input',render));
+function points(){ const mode=document.getElementById('ppts').value, ref=document.getElementById('pref').checked; const pts=[];
+  for(const e of DATA.entries){ if(e.reference&&!ref) continue; const fam=FAM(e); const base={id:e.id,name:e.name,fam, N:e.N, params:e.params, test_auc:e.test_auc};
+    const fr=(e.bg_rej||{});
+    if(e.traced&&e.traced.length){ const list=mode==='best'?[e.traced.reduce((a,b)=>b.test_acc>a.test_acc?b:a)]:e.traced;
+      for(const t of list) pts.push({...base,ckpt:t.ckpt,test_acc:t.test_acc,test_auc:t.test_auc??e.test_auc,avg_bg_rej:t.avg_bg_rej,rej_W:(t.bg_rej||{}).W,rej_Z:(t.bg_rej||{}).Z,rej_t:(t.bg_rej||{}).t,lut:t.lut,lut_pct:t.lut_pct,ff:t.ff,stages:t.stages,latency_ns:t.latency_ns,ebops:t.ebops,inenv:t.in_envelope}); }
+    else if(e.test_acc!=null) pts.push({...base,test_acc:e.test_acc,avg_bg_rej:e.avg_bg_rej,rej_W:fr.W,rej_Z:fr.Z,rej_t:fr.t}); }
+  return pts; }
+const PCOL={}; let pci=0; const pcol=f=>PCOL[f]??(PCOL[f]=`hsl(${(pci++*67)%360} 65% 48%)`);
+function drawPareto(){ if(!DATA) return; const xk=document.getElementById('px').value, yk=document.getElementById('py').value, lx=document.getElementById('pxlog').checked, ly=document.getElementById('pylog').checked;
+  const [xl,xf]=METRICS[xk],[yl,yf]=METRICS[yk]; const pts=points().filter(p=>p[xk]!=null&&p[yk]!=null&&!isNaN(p[xk])&&!isNaN(p[yk])).map(p=>({...p,_x:xf(p[xk]),_y:yf(p[yk])})).filter(p=>(!lx||p._x>0)&&(!ly||p._y>0));
+  const svg=document.getElementById('pareto'); const W=960,H=560,L=70,R=20,T=20,B=60; if(!pts.length){svg.innerHTML=`<text x="${W/2}" y="${H/2}" text-anchor="middle">no points with both ${xl} and ${yl}</text>`;return;}
+  const xs=pts.map(p=>p._x),ys=pts.map(p=>p._y); const tx=v=>lx?Math.log10(v):v, ty=v=>ly?Math.log10(v):v;
+  let x0=Math.min(...xs.map(tx)),x1=Math.max(...xs.map(tx)),y0=Math.min(...ys.map(ty)),y1=Math.max(...ys.map(ty)); const px_=(x1-x0)||1,py_=(y1-y0)||1; x0-=0.05*px_;x1+=0.05*px_;y0-=0.05*py_;y1+=0.05*py_;
+  const X=v=>L+(tx(v)-x0)/(x1-x0)*(W-L-R), Y=v=>H-B-(ty(v)-y0)/(y1-y0)*(H-T-B);
+  const ticks=(a,b,log)=>{ if(log){const o=[];for(let e=Math.floor(a);e<=Math.ceil(b);e++)for(const m of [1,2,5]){const v=m*10**e; if(Math.log10(v)>=a&&Math.log10(v)<=b)o.push(v);} return o;} const n=6,s=(b-a)/n,mag=10**Math.floor(Math.log10(s)),st=Math.ceil(s/mag)*mag; const o=[]; for(let v=Math.ceil(a/st)*st; v<=b; v+=st) o.push(+v.toFixed(6)); return o; };
+  let s=''; for(const v of ticks(x0,x1,lx)){const x=X(v); s+=`<line x1="${x}" y1="${T}" x2="${x}" y2="${H-B}" stroke="var(--line)"/><text x="${x}" y="${H-B+16}" text-anchor="middle" style="font-size:11px">${v>=1e4?v.toExponential(0):v}</text>`;}
+  for(const v of ticks(y0,y1,ly)){const y=Y(v); s+=`<line x1="${L}" y1="${y}" x2="${W-R}" y2="${y}" stroke="var(--line)"/><text x="${L-6}" y="${y+4}" text-anchor="end" style="font-size:11px">${v>=1e4?v.toExponential(0):v}</text>`;}
+  s+=`<text x="${(L+W-R)/2}" y="${H-12}" text-anchor="middle">${xl}${lx?' (log)':''}</text><text transform="translate(16 ${(T+H-B)/2}) rotate(-90)" text-anchor="middle">${yl}${ly?' (log)':''}</text>`;
+  const ex=ENV[xk],ey=ENV[yk]; if(ex!=null&&(!lx||ex>0)){const x=X(xf(ex)); if(x>L&&x<W-R) s+=`<line x1="${x}" y1="${T}" x2="${x}" y2="${H-B}" stroke="var(--ok)" stroke-dasharray="6 4"/><text x="${x+4}" y="${T+12}" fill="var(--ok)" style="font-size:11px">envelope</text>`;}
+  if(ey!=null){const y=Y(yf(ey)); if(y>T&&y<H-B) s+=`<line x1="${L}" y1="${y}" x2="${W-R}" y2="${y}" stroke="var(--ok)" stroke-dasharray="6 4"/><text x="${W-R-4}" y="${y-4}" text-anchor="end" fill="var(--ok)" style="font-size:11px">JEDI N=64 (80.9%)</text>`;}
+  const fams=[...new Set(pts.map(p=>p.fam))]; for(const p of pts){ const ref=p.fam==='reference'; s+=`<g class="pt" data-id="${p.id}"><title>${p.name}${p.ckpt?' · '+p.ckpt:''}
+${xl}: ${p._x.toLocaleString()}
+${yl}: ${p._y.toLocaleString()}${p.lut?'
+LUT '+Math.round(p.lut).toLocaleString()+' · '+p.stages+' stages · '+p.latency_ns+' ns':''}${p.test_acc!=null?'
+acc '+(100*p.test_acc).toFixed(2)+'%':''}</title>${ref?`<path d="M${X(p._x)} ${Y(p._y)-7} l4 7 l-4 7 l-4 -7z" fill="var(--warn)" stroke="var(--fg)"/>`:`<circle cx="${X(p._x)}" cy="${Y(p._y)}" r="${p.inenv?6:4}" fill="${pcol(p.fam)}" stroke="${p.inenv?'var(--ok)':'none'}" stroke-width="2" opacity="0.85"/>`}</g>`; }
+  let lg=''; fams.forEach((f,i)=>{lg+=`<g transform="translate(${L+8} ${T+8+i*16})">${f==='reference'?`<path d="M6 -6 l4 6 l-4 6 l-4 -6z" fill="var(--warn)"/>`:`<circle cx="6" cy="0" r="4" fill="${pcol(f)}"/>`}<text x="16" y="4" style="font-size:11px">${f}</text></g>`;});
+  svg.innerHTML=s+lg; svg.querySelectorAll('.pt').forEach(g=>g.style.cursor='pointer'); svg.querySelectorAll('.pt').forEach(g=>g.onclick=()=>{document.querySelector('#views button[data-v=table]').click(); open.add(g.dataset.id); render(); const r=document.querySelector(`tr[data-id="${CSS.escape(g.dataset.id)}"]`); r&&r.scrollIntoView({block:'center'});}); }
+(function(){ const px=document.getElementById('px'),py=document.getElementById('py'); for(const k in METRICS){px.add(new Option(METRICS[k][0],k)); py.add(new Option(METRICS[k][0],k));} px.value='lut'; py.value='test_acc'; document.getElementById('pxlog').checked=true;
+  ['px','py','pxlog','pylog','ppts','pref'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{const k=document.getElementById(id===('px')?'px':'py').value; if(id==='px') document.getElementById('pxlog').checked=METRICS[k][2]; if(id==='py') document.getElementById('pylog').checked=METRICS[k][2]; drawPareto();}));
+  document.querySelectorAll('#views button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#views button').forEach(x=>x.classList.toggle('active',x===b)); document.getElementById('view-table').style.display=b.dataset.v==='table'?'':'none'; document.getElementById('view-pareto').style.display=b.dataset.v==='pareto'?'':'none'; if(b.dataset.v==='pareto') drawPareto();}); })();
 fetch('data.json?'+Date.now()).then(r=>r.json()).then(d=>{DATA=d; const n=d.entries.filter(e=>!e.reference).length; document.getElementById('sub').textContent=`${n} models · generated ${d.generated} · click a row for diagram, specs, explanation and code · research log in NOTES.md`; render();}).catch(e=>{document.getElementById('sub').textContent='data.json not found yet';});
 </script>
 </body>
