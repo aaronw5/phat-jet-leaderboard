@@ -287,3 +287,11 @@ full float model's (66): the compressed model keeps accuracy better than W/Z/t r
 - 11:00 — **Best so far (bit-exact): 80.62% test, avg rej 55.8, 146,481 LUT (8.5%), FF 104k, 13 stages, 43.3 ns, II=1,
   0 DSP/BRAM** — final model of q9/q64-u-lg-t250k-kd (3000 ep; snapshot runs/_traced/...__final.keras; Verilog under
   verilog/q9_q64_u_lg_t250k_kd_seed0__runs__q9__q64_u_lg_t250k_kd__seed0__final/). 0.3 pts from the N=64 target.
+- 11:30 — Final models of the finished 3000-epoch per-slot runs (test set, da4ml @300 MHz):
+  | N | test acc | avg rej | EBOPs | LUT | % | stages | ns |
+  |---|---|---|---|---|---|---|---|
+  | 64 (q9 t250k) | 80.62 | 55.8 | 194k | 146,481 | 8.5 | 13 | 43 |
+  | 64 (q8 t200k) | 80.44 | 54.0 | 153k | 118,820 | 6.9 | 12 | 40 |
+  | 32 (q8 t150k) | 78.26 | 33.7 | 134k | 99,530 | 5.8 | 13 | 43 |
+  | 32 (q8 t100k) | 77.80 | 29.8 | 90k | 70,851 | 4.1 | 12 | 40 |
+  Verilog + bit-exact running for the 118.8k and 99.5k designs. Still open: 80.9% at N=64 inside the budget (q11/q12).
