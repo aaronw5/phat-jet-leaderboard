@@ -303,3 +303,16 @@ full float model's (66): the compressed model keeps accuracy better than W/Z/t r
 - 12:40 — 80.75%/168.4k design Verilator-verified bit-exact (512 jets, max err 0.0). q11 fine-tune (320k target from
   the t250k checkpoint) final 80.56% test. Leaderboard page now shows load/render errors in the subtitle and retries
   data.json (user reported it stopped working on a phone, likely during a republish).
+
+## 2026-10-07 ~13:30 — goal restated: BEAT JEDI-Linear (80.9% @ N=64) inside the envelope; we are at 80.75% @ 168k
+- Levers launched: (1) **ensemble teacher** — mean log-softmax of 7 float models (b64-relu ×2, gmpsep, att32, p4,
+  pT-sorted full, gmpch8) → runs/_seeds/ensemble7_train_logits.npy; (2) **more particles with per-slot weights**
+  (f7 float: N=96/128 attention-free and N=128 full; q13 QAT N=64/96/128 at 250–330k EBOPs, 5000 epochs, 2 seeds,
+  ensemble teacher, α 0.7, T 3); (3) component-cost trace of the 80.75% design to find what to prune.
+- Site: a literal newline inside a JS string in the Pareto tooltip broke the whole page script (table blank);
+  fixed; publish script now syntax-checks the page with `node --check` and reports the Pages build status;
+  `.nojekyll` added after a failed Jekyll build.
+- 14:10 — q10 330k-target finals: per-slot + 8-ch GMP 80.75% (rej 58.8) @ 182.5k LUT; 8×8 GMP 80.65–80.72% @
+  180–183k LUT — both ≈254k EBOPs, just over the budget (LUT ≈ 0.72×EBOPs here → budget ≈ 240k EBOPs).
+  Best inside the envelope stays 80.75% @ 168.4k (q9 300k-target, 238k EBOPs). N=96/128 per-slot attention-free
+  float = 79.8–80.0% (no gain over N=64 in float; QAT q13 will tell whether the extra slots help after pruning).
