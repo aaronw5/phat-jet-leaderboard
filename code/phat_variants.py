@@ -207,13 +207,84 @@ def linformer_attn(x, d, nh, k, q, name, attn_bits=None, share_qk=False, share_e
     return _qdense_bits(d, q, None, f"{name}_wo")(ops.reshape(o, (-1, N, d)))
 
 
+def _qbn_dense(eq, shape, q, name, activation=None, bias_axes="C"):
+    """JEDI-linear's dense: einsum + batchnorm folded into the kernel (QEinsumDenseBatchnorm) when quantized."""
+    if q:
+        from hgq.layers import QEinsumDenseBatchnorm
+        return QEinsumDenseBatchnorm(eq, shape, bias_axes=bias_axes, activation=activation, name=name)
+
+    def apply(x):
+        h = layers.EinsumDense(eq, shape, bias_axes=bias_axes, name=name)(x)
+        h = layers.BatchNormalization(name=name + "_bn")(h)
+        return layers.Activation(activation, name=name + "_act")(h) if activation else h
+    return apply
+
+
+def build_jedi(num_particles=64, width=64, head_widths=(64, 32, 16), n_classes=5, quantized=False, uq1=True,
+               gmp_mode="none", gmp_edges=None, gmp_bins=8, gmp_bounds=1.6, gmp_kernel=3, gmp_channels=16, name=None):
+    """JEDI-linear 'gnn' backbone (github.com/calad0i/JEDI-linear src/model.py get_gnn), optionally with a PHAT-JeT
+    GMP message. Per particle: phi1 = MLP(x); interaction s = MLP(phi1), d = MLP(mean_n phi1), h = s + d (+ GMP msg);
+    h = MLP(h); sum-pool; head MLP. uq1=True shares data-lane bit-widths across the particle axis (permutation-
+    invariant, JEDI 'perminv'); uq1=False lets every particle slot learn its own bits (JEDI pT-sorted model).
+    gmp_mode='grid': scatter the first `gmp_channels` of phi1 onto a static G x G (eta, phi) grid, depthwise conv,
+    gather back, project to `width` and add to h (local geometric context that the global mean cannot carry)."""
+    from math import log2
+    q = quantized
+    N, W = num_particles, width
+    feats = keras.Input((N, 3), name="features")
+    eta, phi = feats[..., 1], feats[..., 2]
+    scopes = []
+    if q:
+        from hgq.config import QuantizerConfigScope
+        scopes = [QuantizerConfigScope(place=("weight", "bias"), overflow_mode="SAT_SYM"),
+                  QuantizerConfigScope(place="datalane", heterogeneous_axis=(-1,) if uq1 else None)]
+    for s in scopes:
+        s.__enter__()
+    try:
+        x = _qbn_dense("bnc,cC->bnC", (N, W), q, "embed", activation="relu")(feats)
+        s_ = _qbn_dense("bnc,cC->bnC", (N, W), q, "interact_self", activation="relu")(x)
+        if q:
+            from hgq.layers import QAdd, QSum
+            m = QSum(axes=1, scale=2.0 ** -round(log2(N)), keepdims=True, name="interact_pool")(x)
+        else:
+            m = ops.sum(x, axis=1, keepdims=True) * 2.0 ** -round(log2(N))
+        d_ = _qbn_dense("bnc,cC->bnC", (1, W), q, "interact_global", activation="relu")(m)
+        h = QAdd(name="interact_add")([s_, d_]) if q else s_ + d_
+        if gmp_mode == "grid":
+            if gmp_edges is None:
+                gmp_edges = _np.linspace(-gmp_bounds, gmp_bounds, gmp_bins + 1).tolist()
+            C = gmp_channels or W
+            xin = x if C == W else x[..., :C]
+            msg = gmp_grid(xin, eta, phi, C, q, gmp_edges, gmp_kernel, name="gmp")
+            msg = _qbn_dense("bnc,cC->bnC", (N, W), q, "gmp_pointwise")(msg)
+            h = QAdd(name="gmp_add")([h, msg]) if q else h + msg
+        h = _qbn_dense("bnc,cC->bnC", (N, W), q, "phi2", activation="relu")(h)
+        if q:
+            pooled = QSum(axes=1, scale=1 / 16, keepdims=False, name="agg_sum")(h)
+        else:
+            pooled = ops.sum(h, axis=1) * (1 / 16)
+        z = pooled
+        for i, hw in enumerate(head_widths):
+            z = _qbn_dense("bc,cC->bC", hw, q, f"head{i + 1}", activation="relu")(z)
+        logits = _qbn_dense("bc,cC->bC", n_classes, q, "head_out")(z)
+    finally:
+        for s in reversed(scopes):
+            s.__exit__(None, None, None)
+    return keras.Model(feats, logits, name=name or ("jedi_gnn" + ("_q" if q else "")))
+
+
 def build_variant(
     num_particles=64, d_model=16, num_heads=4, patch_size=8, n_classes=5, quantized=False,
     gmp_mode="grid", gmp_edges=None, gmp_bins=8, gmp_bounds=1.6, gmp_kernel=3, gmp_channels=None,
     local_mode="mha", global_mode="mha", ffn_mult=1, pre_norm="tanh", attn_bits=None,
     parallel_attn=False, attn_particles=None, share_qk=False, use_head1=True, linf_k=4, unshared=False,
     ffn_hidden=None, mix_hidden=None, n_blocks=1, lut_layers=None, lut_dhl=8, name=None,
+    arch="phat", jedi_width=64, jedi_uq1=True, jedi_head=(64, 32, 16),
 ):
+    if arch == "jedi":
+        return build_jedi(num_particles=num_particles, width=jedi_width, head_widths=jedi_head, n_classes=n_classes,
+                          quantized=quantized, uq1=jedi_uq1, gmp_mode=gmp_mode, gmp_edges=gmp_edges, gmp_bins=gmp_bins,
+                          gmp_bounds=gmp_bounds, gmp_kernel=gmp_kernel, gmp_channels=gmp_channels or 16, name=name)
     UNSHARED["on"] = bool(unshared)
     LUT["roles"] = set((lut_layers or "").split(",")) - {""}
     LUT["d_hl"] = lut_dhl
@@ -348,7 +419,9 @@ def kw_from_args(a):
                 attn_particles=g("attn_particles") or None, share_qk=bool(g("share_qk")),
                 use_head1=not g("no_head1"), linf_k=g("linf_k") or 4, unshared=bool(g("unshared")),
                 ffn_hidden=g("ffn_hidden") or None, mix_hidden=g("mix_hidden") or None,
-                n_blocks=g("n_blocks") or 1, lut_layers=g("lut_layers") or None, lut_dhl=g("lut_dhl") or 8)
+                n_blocks=g("n_blocks") or 1, lut_layers=g("lut_layers") or None, lut_dhl=g("lut_dhl") or 8,
+                arch=g("arch") or "phat", jedi_width=g("jedi_width") or 64, jedi_uq1=not g("jedi_per_slot_bits"),
+                jedi_head=tuple(int(v) for v in (g("jedi_head") or "64,32,16").split(",")))
 
 
 def build_q_from_args(a):

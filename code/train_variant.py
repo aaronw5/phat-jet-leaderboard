@@ -135,6 +135,10 @@ def main():
     p.add_argument("--share_qk", action="store_true")
     p.add_argument("--no_head1", action="store_true")
     p.add_argument("--unshared", action="store_true", help="position-specific weights in embed/GMP-pointwise/FFN (JEDI-style)")
+    p.add_argument("--arch", default="phat", choices=["phat", "jedi"], help="jedi: JEDI-linear gnn backbone (+ GMP if --gmp grid)")
+    p.add_argument("--jedi_width", type=int, default=64)
+    p.add_argument("--jedi_head", default="64,32,16")
+    p.add_argument("--jedi_per_slot_bits", action="store_true", help="per-particle-slot data-lane bits (JEDI pT-sorted) instead of shared (perminv)")
     p.add_argument("--w_l1", type=float, default=0.0, help="L1 on kernels (sparsity; zero weights are free in RTL)")
     # training
     p.add_argument("--epochs", type=int, default=300)

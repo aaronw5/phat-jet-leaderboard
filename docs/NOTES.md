@@ -391,3 +391,30 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
 - 03:20 — pruned 290k seed0 finished at 79.98% test (best val 80.02) vs seed1 80.77% → large seed variance (~0.8) at this budget; pruned form needs ≥3 seeds before claiming it.
 - 03:40 — winner recipe 340k seed1 final: **80.76% @ 171,698 LUT (9.9%), 13 stages, 43 ns** (in envelope). Three in-envelope seeds of the per-slot attention-free model: 80.89 / 80.68 / 80.76 → **80.78 ± 0.09%** vs JEDI-Linear 80.9% (single number). Matches within ~0.1; best seed ties it.
 - 03:55 — pruned 305k seed0 final: 80.73% @ 169.4k LUT (9.8%), 15 stages, 50 ns (in envelope). Pruned form is no better than the per-slot winner at the same LUT.
+
+## 2026-10-08 — the real JEDI-linear bar, and the JEDI backbone in our pipeline
+- Read the official JEDI-linear release (github.com/calad0i/JEDI-linear: official_models + Vivado post-route reports).
+  Besides the pT-sorted models we were targeting (N=64 80.92% @ 70.7k LUT; N=32 78.00% @ 45.3k), it publishes
+  **permutation-invariant** models (data-lane bit-widths shared across particles) that are inside the envelope and
+  much stronger: **N=64 81.81% @ 163.9k LUT (24 cycles, ~78 ns achieved)**, **N=32 79.04% @ 135.9k LUT**.
+  (16-feature models are higher still — 82.35% N=64 — but use 16 inputs per particle; not like-for-like.)
+  → our best in-envelope (80.78 ± 0.09%, 3 seeds) is ~1.0 pt below the real 3-feature bar.
+- JEDI 'gnn' = per-particle MLP(3→64) → s = MLP(φ), d = MLP(mean φ), h = s + d → MLP → sum-pool → MLP 64-32-16-5,
+  BN folded (QEinsumDenseBatchnorm), weights SAT_SYM. Width 64 vs our d=16 is the obvious difference.
+- Reference benchmarking: scripts/prep_hls4ml_raw.py streams the raw hls4ml 150p dataset (Zenodo 3602260) and keeps
+  the 16 features of the leading 64 constituents; scripts/eval_jedi_official.py scores each official checkpoint on the
+  260k test set with our metric code (acc, AUC, W/Z/t rejection @80% TPR) and traces it with our da4ml convention.
+  Official models + summaries copied to /j-jepa-vol/phat-jet-aaron/jedi_official/. Leaderboard reference rows now
+  carry post-route LUT/FF/latency + (once evaluated) AUC/rejection + our da4ml estimate.
+- Added `--arch jedi` (phat_variants.build_jedi): the JEDI backbone in our pipeline, optional `--gmp grid` hybrid
+  (PHAT-JeT GMP message from 16 channels added before the second per-particle MLP), `--jedi_per_slot_bits`.
+  Launched **q22** (5000 ep, pT order, ensemble distillation unless 'nokd'): jd64 t230k (+ nokd control), jd64
+  per-slot bits t230k, JEDI+GMP N=64 t230k/t200k, jd32 / JEDI+GMP N=32 t200k.
+- 3-block (pruned) compressed traces: 80.51% @ 208.7k LUT (25 stg, 83 ns); 80.79% @ 242k; 80.43% @ 228k (q21 225k) —
+  ~0.9–1.0 LUT/EBOP, so depth on the PHAT form cannot fit the envelope at useful accuracy. Remaining 3-block runs
+  cancelled (checkpoints kept) to free GPUs for the JEDI-backbone line (q22).
+- **Official JEDI-linear models benchmarked on our 260k test set** (our metric code; reproduce published acc within 0.02):
+  3-feature N=64 perm-inv 81.81% / AUC 0.9620 / rej 80.4 (W 122 Z 101 t 18.6), post-route 163.9k LUT, 78 ns (da4ml ours: 158k, 12 stg);
+  N=64 pT-sorted 80.94% / 0.9589 / 66.0, 70.7k LUT; N=32 perm-inv 79.04% / 0.9519 / 36.8, 135.9k; N=32 pT-sorted 78.00% / 0.9472 / 30.7, 45.3k.
+  16-feature: N=64 perm-inv 82.35% / 83.2 rej (192k LUT post-route, out of envelope), N=64 81.78% @ 84k.
+  Our best in-envelope (80.89%, rej 59.3) trails the perm-inv N=64 model by 0.9 pt accuracy and ~21 in rejection (W/Z mostly).
