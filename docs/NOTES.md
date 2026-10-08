@@ -526,3 +526,15 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
   every attention sub-layer (projections, QK einsum, softmax incl. exp/inverse tables, AV einsum, Linformer E/F) +
   a minimum on attention weight bits.
 - 23:15 — **Verilator bit-exact verified** for the 82.25% design (q30 jd64-hl-t230k-kd ep223): 2000 test jets, max|err| 0.0, argmax 100%; Verilog in verilog/q30_jd64_hl_t230k_kd_seed0__…epoch_223…; test 82.25%, avg rej 93.3 (JEDI-linear perm-inv 80.4), 610.7k LUT, 14 stages, 46.6 ns, II=1. First verified design above JEDI-linear inside the latency envelope. Also: JEDI per-slot bits (no KD) 82.10% @ 474k, 47 ns; JEDI+GMP float-init 81.86% @ 638k, 50 ns.
+- 15:20 EDT — Published leaderboard (user-requested 15:15 update). New best: **JEDI float-init distilled (q31
+  jd64-hl-fi2-t230k-kd ep437) 82.26% test @ 464.7k LUT, 14 stg, 46.6 ns** (Verilog/bit-exact running); JEDI+GMP 400k
+  81.87% @ 508k. Implemented input-side attention floors (`--attn_in_floor/--attn_ifloor/--attn_wbits`: QK/AV einsum
+  iq_confs, softmax iq/exp/inv, projection iq+kq, Linformer E/F); build+trace check passed (PHAT d32, Linformer d32).
+  Launched **q32**: full PHAT d32 p8 (float-init from f12 82.54%, distilled) with floors 2/3/3 @ 1M and 2M, 4/4/4 @ 1M,
+  no-new-floor control @ 1M; native Linformer d32 2 heads with floors @ 1M.
+- 15:35 EDT — More synthesized (JEDI inputs, all 46.6 ns): **JEDI+GMP 400k distilled (q30) 82.30% @ 590.7k LUT** (best
+  so far; our hybrid), JEDI+GMP 400k 82.00% @ 513.6k, 81.87% @ 508k; JEDI+GMP 400k KD ep477 81.61% @ 499k.
+  q29 PHAT+GMP+JEDI-global KD overshot to 80k EBOPs and collapsed (stopped). N=32 on JEDI inputs from scratch
+  77.5–77.9% val (JEDI-linear 79.04%) → **f13** N=32 floats (JEDI, JEDI+GMP) for float-init. **q33**: 2nd seed of the
+  four designs above JEDI-linear.
+- 15:45 EDT — **2nd bit-exact design:** JEDI float-init distilled (q31 jd64-hl-fi2-t230k-kd ep437) 82.26% test, avg rej 87.9, 464.7k LUT, 14 stg, 46.6 ns — Verilator 2000 jets max|err| 0, argmax 100%. Verilog for JEDI+GMP distilled 82.30% (q30 jdg64-hl-t400k-kd ep317, 590.7k) started.
