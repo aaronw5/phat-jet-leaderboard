@@ -378,3 +378,11 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
   83 ns; 81.11% @ 500k** — beats JEDI accuracy, ~1.8× the LUT budget, within the latency limit.
   Launched **q19** (2 seeds each): pruned at 290k/305k EBOPs, winner at 340k, pruned 3-block at 250k/320k (stable lr).
 - 22:45 — mean-token q15 400k seed1: **80.94% @ 219.8k LUT (12.7%), 14 stages, 47 ns** (final 80.92% @ 221k, rej 61.2); beats JEDI accuracy at 1.27× the LUT budget. N=128 per-slot finals 80.51/80.60 (no gain over N=64).
+- 23:15 — **HGQ-LUT diagnosis (q18)**: shared weights + LUT (ffn,mix,head) trains (79.8% val @ 812k EBOPs, ep 297);
+  per-slot + LUT stays at chance even with lr 1e-3 and even with LUT on the head only → the failure is the per-slot
+  (QEinsumDense) embedding feeding QDenseT. Hypothesis: datalane wrap overflow from narrow initial bits. **q20** tests
+  wider initial bits (i0_a 6/bw_a 8; i0_a 8/bw_a 10) + a shared-weight LUT arm at 200k. Pruned 380k final: 80.88% @
+  205.8k LUT (11.9%), 15 stages. 3-block with lr 1e-3/β_max 3e-6 (q18) is stable so far: 81.12% val @ 647k EBOPs (ep 371).
+- 23:50 — HGQ-LUT attention-on-32 (q16 lut3-att32, shared weights) traced: 80.10% @ 582k LUT, 24 stages (80 ns); 80.04% @ 720k — no better than the non-LUT att32 (80.12% @ 518k). Attention dominates; LUT dense layers don't change that.
+- 00:20 — q20 per-slot+LUT with i0_a 6/bw_a 8 still at chance → overflow hypothesis refuted (cancelled; i0_a 8 arm pending as last check). Pruned 3-block (q19, lr 1e-3, β_max 3e-6) stable at 80.9–81.1% val, compressing through 480–550k EBOPs toward 250k/320k (≈260k EBOPs ↔ 173k LUT for 3-block).
+- 01:00 — pruned 3-block traces: 80.85–81.0% @ 317–334k LUT, 28–29 stages (93–97 ns); ≈0.75 LUT/EBOP → 173k LUT needs ≈230k EBOPs. Launched **q21** (wp3 at 200k/225k, 2 seeds). Latency for 3 blocks is near the 100 ns cap (28–30 stages).
