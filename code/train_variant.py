@@ -173,6 +173,9 @@ def main():
     p.add_argument("--beta_damp", type=float, default=0.02, help="beta *= 1-damp while below target")
     p.add_argument("--resume", default=None, help="resume from a Q checkpoint (.keras)")
     p.add_argument("--attn_floor", type=float, default=0.0, help="min fractional bits on attention Q/K/V/O lanes")
+    p.add_argument("--attn_in_floor", type=float, default=None, help="min fractional bits on the INPUT lanes of every attention sub-layer (QK, softmax, AV, projections, Linformer E/F)")
+    p.add_argument("--attn_ifloor", type=float, default=None, help="min integer bits on those attention input lanes (no clipping of scores)")
+    p.add_argument("--attn_wbits", type=float, default=None, help="min bit width of attention projection weights")
     p.add_argument("--attn_beta_scale", type=float, default=1.0, help="EBOPs pressure multiplier on *attn* layers")
     a = p.parse_args()
 

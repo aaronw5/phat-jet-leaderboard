@@ -64,10 +64,41 @@ def _pdense(units, q, activation=None, name=None):
     return apply
 
 
+ATTN_FLOORS = {"f": None, "i": None, "wbits": None}  # set by build_q_from_args (--attn_floor/--attn_ifloor/--attn_wbits)
+
+
+def _attn_dlane():
+    """Data-lane quantizer config with the attention floors on fractional and integer bits, or None. Applied to the
+    INPUT quantizers of attention sub-layers: HGQ quantizes layer inputs, so floors on output quantizers (the old
+    --attn_floor) never bound and attention collapsed to a constant (diag_attn.py, 2026-10-08)."""
+    if ATTN_FLOORS["f"] is None and ATTN_FLOORS["i"] is None:
+        return None
+    from hgq.config import QuantizerConfig
+    from hgq.constraints import MinMax
+    c = QuantizerConfig("default", "datalane")
+    if ATTN_FLOORS["f"] is not None:
+        c.config["fc"] = MinMax(ATTN_FLOORS["f"], 16)
+    if ATTN_FLOORS["i"] is not None:
+        c.config["ic"] = MinMax(ATTN_FLOORS["i"], 12)
+    return c
+
+
+def _attn_wconf():
+    """Weight quantizer config with a minimum bit width for attention projections, or None."""
+    if ATTN_FLOORS["wbits"] is None:
+        return None
+    from hgq.config import QuantizerConfig
+    from hgq.constraints import MinMax
+    c = QuantizerConfig("default", "weight")
+    c.config["bc"] = MinMax(ATTN_FLOORS["wbits"], 23)
+    return c
+
+
 def _einsum(eq, xs, q, name=None):
     if q:
         from hgq.layers import QEinsum
-        return QEinsum(eq, name=name)(xs)
+        dl = _attn_dlane() if name and "attn" in name else None
+        return (QEinsum(eq, name=name, iq_confs=[dl] * len(xs)) if dl is not None else QEinsum(eq, name=name))(xs)
     return ops.einsum(eq, *xs)
 
 
@@ -78,7 +109,15 @@ def _softmax(x, q, name=None, exp_i_max=5):
         from hgq.layers import QSoftmax
         exp_iq = QuantizerConfig("default", "datalane")
         exp_iq.config["ic"] = MinMax(-16, exp_i_max)
-        return QSoftmax(axis=-1, name=name, exp_iq_conf=exp_iq)(x)
+        dl = _attn_dlane()
+        if dl is None:
+            return QSoftmax(axis=-1, name=name, exp_iq_conf=exp_iq)(x)
+        if ATTN_FLOORS["f"] is not None:
+            exp_iq.config["fc"] = MinMax(ATTN_FLOORS["f"], 16)
+        inv_iq = QuantizerConfig("default", "datalane")
+        if ATTN_FLOORS["f"] is not None:
+            inv_iq.config["fc"] = MinMax(ATTN_FLOORS["f"], 16)
+        return QSoftmax(axis=-1, name=name, iq_conf=dl, enable_iq=True, exp_iq_conf=exp_iq, inv_iq_conf=inv_iq)(x)
     return layers.Softmax(axis=-1, name=name)(x)
 
 
@@ -89,13 +128,21 @@ def _qdense_bits(units, q, fbits, name):
     """Dense whose OUTPUT data lane has fractional bits in [ATTN_FLOOR, fbits] (Q/K/V/O lanes).
     The floor stops the EBOPs penalty from collapsing the attention path to ~1 bit."""
     lo, hi = ATTN_FLOOR["f"], fbits
-    if q and (lo is not None or hi is not None):
+    dl, wc = (_attn_dlane(), _attn_wconf()) if q else (None, None)
+    if q and (lo is not None or hi is not None or dl is not None or wc is not None):
         from hgq.config import QuantizerConfig
         from hgq.constraints import MinMax
         from hgq.layers import QDense
-        oq = QuantizerConfig("default", "datalane")
-        oq.config["fc"] = MinMax(lo if lo is not None else -16, hi if hi is not None else 16)
-        return QDense(units, name=name, oq_conf=oq)
+        kw = {}
+        if lo is not None or hi is not None:
+            oq = QuantizerConfig("default", "datalane")
+            oq.config["fc"] = MinMax(lo if lo is not None else -16, hi if hi is not None else 16)
+            kw["oq_conf"] = oq
+        if dl is not None:
+            kw["iq_conf"] = dl
+        if wc is not None:
+            kw["kq_conf"] = wc
+        return QDense(units, name=name, **kw)
     return _dense(units, q, name=name)
 
 
@@ -184,7 +231,8 @@ def _seq_proj(x, k, q, name):
     N, D = x.shape[1], x.shape[2]
     if q:
         from hgq.layers import QEinsumDense
-        return QEinsumDense("bnd,nk->bkd", output_shape=(k, D), name=name)(x)
+        kw = {k_: v for k_, v in (("iq_conf", _attn_dlane()), ("kq_conf", _attn_wconf())) if v is not None}
+        return QEinsumDense("bnd,nk->bkd", output_shape=(k, D), name=name, **kw)(x)
     return layers.EinsumDense("bnd,nk->bkd", output_shape=(k, D), name=name)(x)
 
 
@@ -465,6 +513,10 @@ def build_q_from_args(a):
     s1 = QuantizerConfigScope(default_q_type="kif", place="datalane", overflow_mode=g("datalane_overflow") or "wrap", f0=g("bw_a"),
                               i0=g("i0_a"), fr=MonoL1(l1), ic=MinMax(0, 12), **({"fc": fc} if fc else {}))
     ATTN_FLOOR["f"] = g("attn_floor") if (g("attn_floor") or 0) > 0 else None
+    # input-side attention floors (the effective fix); off unless requested so older runs rebuild unchanged
+    ATTN_FLOORS["f"] = g("attn_in_floor") if g("attn_in_floor") is not None else None
+    ATTN_FLOORS["i"] = g("attn_ifloor") if g("attn_ifloor") is not None else None
+    ATTN_FLOORS["wbits"] = g("attn_wbits") if g("attn_wbits") is not None else None
     # shared_bits: data-lane bit-widths shared across the particle axis (JEDI-linear 'perm-inv' quantization)
     s2 = QuantizerConfigScope(place="datalane", heterogeneous_axis=(-1,)) if g("shared_bits") else None
     with s0, s1, LayerConfigScope(beta0=0):

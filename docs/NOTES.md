@@ -509,3 +509,20 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
   float-only result (best float: native d64 81.58%, Linformer+GMP+JEDI-global d32 81.78% on our inputs).
 - JEDI-input QAT early (val): JEDI 230k distilled 81.71% @ 745k EBOPs (ep 281, scratch); JEDI float-init distilled
   81.68% @ 2.4M; JEDI per-slot 81.58% @ 853k; JEDI+GMP 400k distilled 81.20% @ 1.3M; still compressing.
+- 22:50 (18:50 EDT 14:50) — **First designs above JEDI-linear inside the latency envelope (JEDI's inputs, synthesized):**
+  JEDI backbone distilled (q30 jd64-hl-t230k-kd ep223) **82.25% test @ 610.7k LUT, 14 stg, 46.6 ns**; JEDI+GMP
+  float-init (q31 jdg64-hl-fi2-t400k ep226) 81.86% @ 637.9k, 15 stg, 50 ns; JEDI distilled ep536 81.67% @ 360.8k, 43 ns.
+  (JEDI-linear perm-inv 81.81% @ 163.9k, 78 ns.) Verilog + Verilator bit-exact running for the 82.25% design.
+  Page: "in envelope" is now purely synthesized latency < 100 ns; "beats JEDI-linear" is a separate badge.
+  Attention collapse: diag_attn.py running on collapsed PHAT / Linformer ckpts (score/softmax/AV lanes had no floor).
+  User: publish the page at 15:15 EDT with everything benchmarked by then (trace-hl1, trace-hl2, verilog jobs).
+- 23:10 — **Attention-collapse diagnosis (diag_attn.py).** PHAT d32 (q25, wrap, attention-protected): healthy ckpt
+  81.95%, compressed 63%: Q/K/V weights pruned to ~0–1 bits, Q/K data lanes at f = −8 (values in steps of 256),
+  QK scores f = −11, local softmax output ≈ 0 everywhere (mean max weight 0.003 vs uniform 0.125) → attention output
+  constant (≈0); patch-token softmax exactly uniform (0.119 vs 0.125). Linformer d64 (q27, SAT): attention locked onto
+  one key (mean max 0.85), F-projection outputs exploding (std 34) — also input-independent.
+  Root cause: `--attn_floor` set a MinMax on the *output* quantizer of the Q/K/V/O Dense, but HGQ quantizes layer
+  *inputs*, so the floor never bound (Q lane reached f = −8 under a floor of 3). Fix: floors on the input quantizers of
+  every attention sub-layer (projections, QK einsum, softmax incl. exp/inverse tables, AV einsum, Linformer E/F) +
+  a minimum on attention weight bits.
+- 23:15 — **Verilator bit-exact verified** for the 82.25% design (q30 jd64-hl-t230k-kd ep223): 2000 test jets, max|err| 0.0, argmax 100%; Verilog in verilog/q30_jd64_hl_t230k_kd_seed0__…epoch_223…; test 82.25%, avg rej 93.3 (JEDI-linear perm-inv 80.4), 610.7k LUT, 14 stages, 46.6 ns, II=1. First verified design above JEDI-linear inside the latency envelope. Also: JEDI per-slot bits (no KD) 82.10% @ 474k, 47 ns; JEDI+GMP float-init 81.86% @ 638k, 50 ns.
