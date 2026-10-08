@@ -543,3 +543,4 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
   Launched **q35** (N=32 JEDI+GMP float-init QAT: 200k, 350k, KD 250k). Cancelled q29 and q27 (one leftover run each,
   both superseded; pods were under NRP floors: GPU ~1% / CPU 17%); dirs kept.
 - 16:45 EDT — **3rd bit-exact design, best so far: JEDI+GMP hybrid distilled (q30 jdg64-hl-t400k-kd ep317) 82.30% test, avg rej 88.3, 590.7k LUT, FF 232.7k, 14 stg, 46.6 ns, II=1** — Verilator 2000 jets max|err| 0, argmax 100% (first attempt likely OOM at 16 GiB; retried at 32 GiB).
+- 17:15 EDT — Trace jobs twice hung in D state (ceph_mdsc_wait_request) evaluating q30/jd64ps-hl-t400k snapshots, on two different nodes; file readable from the helper. Cancelled both; trace calls now wrapped in timeout 900; q30/jd64ps skipped this round (already traced 82.10% @ 474k).
