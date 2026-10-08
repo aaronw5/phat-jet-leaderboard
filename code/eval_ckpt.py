@@ -42,7 +42,8 @@ m = build_q_from_args(cfg) if cfg.get("mode") == "qat" else build_variant(quanti
 m.load_weights(a.ckpt)
 N = m.inputs[0].shape[1]
 from phat_variants import load_split
-f = f"{cfg.get('sort', 'kt')}-sorted jets_150x3_kt.npz"
+f = (f"{cfg.get('sort', 'kt')}-sorted hls4ml150p (JEDI-linear inputs)" if cfg.get("data") == "hls4ml"
+     else f"{cfg.get('sort', 'kt')}-sorted jets_150x3_kt.npz")
 from phat_variants import use_data
 use_data(cfg)
 x, y = load_split("val", N, cfg.get("sort", "kt"))

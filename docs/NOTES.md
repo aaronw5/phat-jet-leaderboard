@@ -544,3 +544,10 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
   both superseded; pods were under NRP floors: GPU ~1% / CPU 17%); dirs kept.
 - 16:45 EDT — **3rd bit-exact design, best so far: JEDI+GMP hybrid distilled (q30 jdg64-hl-t400k-kd ep317) 82.30% test, avg rej 88.3, 590.7k LUT, FF 232.7k, 14 stg, 46.6 ns, II=1** — Verilator 2000 jets max|err| 0, argmax 100% (first attempt likely OOM at 16 GiB; retried at 32 GiB).
 - 17:15 EDT — Trace jobs twice hung in D state (ceph_mdsc_wait_request) evaluating q30/jd64ps-hl-t400k snapshots, on two different nodes; file readable from the helper. Cancelled both; trace calls now wrapped in timeout 900; q30/jd64ps skipped this round (already traced 82.10% @ 474k).
+- 17:45 EDT — **Efficiency point: JEDI+GMP distilled 230k (q30 jdg64-hl-t230k-kd ep932) 81.85% test @ 255.3k LUT (14.8% VU13P), 13 stg, 43.3 ns** — above JEDI-linear 81.81% at 1.56× its LUT (earlier winners 2.8–3.7×). Verilog/bit-exact started. Trace timeout (900 s) fired on that run's 2nd ckpt (Ceph stall) and the job moved on; page republished (275 models).
+- 18:05 EDT — **Most efficient above JEDI-linear: JEDI+GMP float-init (q31 jdg64-hl-fi2-t230k ep911) 81.91% @ 225.7k LUT (13.1%), 13 stg, 43.3 ns** (1.38× JEDI-linear LUT); same run ep421 82.03% @ 384k, 46.6 ns. (eval_ckpt printed a stale 'jets_150x3_kt.npz' data label; data actually loaded via use_data(cfg) = hls4ml — label fixed.)
+- 18:40 EDT — **4th bit-exact design: JEDI+GMP distilled (q30 jdg64-hl-t230k-kd ep932) 81.85% test, avg rej 81.1,
+  255.3k LUT (14.8%), 13 stg, 43.3 ns** — Verilator 2000 jets exact. Most LUT-efficient verified design above
+  JEDI-linear (1.56× its LUT, 0.55× its latency). 2nd seeds reproduce: JEDI+GMP 400k KD seed1 82.12–82.16% @ 575–589k
+  (seed0 82.30%); JEDI float-init KD seed1 81.89% @ 283.7k. More traces: JEDI+GMP float-init KD 82.08% @ 408k,
+  81.75% @ 257k. Verilog for the 81.91% @ 225.7k design started.
