@@ -538,3 +538,8 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
   77.5–77.9% val (JEDI-linear 79.04%) → **f13** N=32 floats (JEDI, JEDI+GMP) for float-init. **q33**: 2nd seed of the
   four designs above JEDI-linear.
 - 15:45 EDT — **2nd bit-exact design:** JEDI float-init distilled (q31 jd64-hl-fi2-t230k-kd ep437) 82.26% test, avg rej 87.9, 464.7k LUT, 14 stg, 46.6 ns — Verilator 2000 jets max|err| 0, argmax 100%. Verilog for JEDI+GMP distilled 82.30% (q30 jdg64-hl-t400k-kd ep317, 590.7k) started.
+- 16:00 EDT — f13 N=32 JEDI float on JEDI inputs: 79.74 / 79.83% test (rej 43.1/43.5) vs JEDI-linear N=32 perm-inv 79.04%. Launched **q34**: N=32 JEDI float-init QAT (170k/300k, KD 200k, per-slot 300k).
+- 16:25 EDT — f13 N=32 JEDI+GMP float (JEDI inputs) **80.02 / 80.11% test** (JEDI 79.74/79.83; JEDI-linear N=32 79.04).
+  Launched **q35** (N=32 JEDI+GMP float-init QAT: 200k, 350k, KD 250k). Cancelled q29 and q27 (one leftover run each,
+  both superseded; pods were under NRP floors: GPU ~1% / CPU 17%); dirs kept.
+- 16:45 EDT — **3rd bit-exact design, best so far: JEDI+GMP hybrid distilled (q30 jdg64-hl-t400k-kd ep317) 82.30% test, avg rej 88.3, 590.7k LUT, FF 232.7k, 14 stg, 46.6 ns, II=1** — Verilator 2000 jets max|err| 0, argmax 100% (first attempt likely OOM at 16 GiB; retried at 32 GiB).
