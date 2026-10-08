@@ -43,6 +43,8 @@ m.load_weights(a.ckpt)
 N = m.inputs[0].shape[1]
 from phat_variants import load_split
 f = f"{cfg.get('sort', 'kt')}-sorted jets_150x3_kt.npz"
+from phat_variants import use_data
+use_data(cfg)
 x, y = load_split("val", N, cfg.get("sort", "kt"))
 if a.n_eval:
     x, y = x[: a.n_eval], y[: a.n_eval]

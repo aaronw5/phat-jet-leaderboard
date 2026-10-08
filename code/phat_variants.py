@@ -448,7 +448,9 @@ def build_q_from_args(a):
     l1 = g("l1_reg") if g("l1_reg") is not None else 1e-8
     s0 = QuantizerConfigScope(default_q_type="kbi", b0=g("bw_k"), overflow_mode="wrap", i0=g("i0_w"),
                               fr=MonoL1(l1), ir=MonoL1(l1), i_decay_speed=1e-3, **({"fc": fc} if fc else {}))
-    s1 = QuantizerConfigScope(default_q_type="kif", place="datalane", overflow_mode="wrap", f0=g("bw_a"),
+    # datalane_overflow: "wrap" (default; values past the learned integer range wrap around) or "SAT" (saturate).
+    # Linformer QAT learned to depend on wrap-around and became numerically fragile (2026-10-08 diagnosis) -> SAT.
+    s1 = QuantizerConfigScope(default_q_type="kif", place="datalane", overflow_mode=g("datalane_overflow") or "wrap", f0=g("bw_a"),
                               i0=g("i0_a"), fr=MonoL1(l1), ic=MinMax(0, 12), **({"fc": fc} if fc else {}))
     ATTN_FLOOR["f"] = g("attn_floor") if (g("attn_floor") or 0) > 0 else None
     # shared_bits: data-lane bit-widths shared across the particle axis (JEDI-linear 'perm-inv' quantization)
@@ -474,8 +476,30 @@ def sort_jets(x, sort):
     raise ValueError(sort)
 
 
+DATA_HLS4ML = "/j-jepa-vol/phat-jet-aaron/data/hls4ml150p_c64_f16.npz"  # raw hls4ml 150p (prep_hls4ml_raw.py)
+DATA_SRC = {"name": "ours"}
+
+
+def use_data(cfg_or_name):
+    """Select the input pipeline for load_split: 'ours' (jets_150x3_kt.npz, paper robust units) or 'hls4ml'
+    (JEDI-linear's exact inputs: raw pT, eta_rel, phi_rel of the leading N constituents in native pT order,
+    standardized with the train-set mean/std over the leading N slots)."""
+    name = cfg_or_name if isinstance(cfg_or_name, str) else (cfg_or_name.get("data") if isinstance(cfg_or_name, dict) else getattr(cfg_or_name, "data", None))
+    DATA_SRC["name"] = name or "ours"
+
+
 def load_split(split, n, sort="kt"):
     """x_train/y_train (620k) or x_val/y_val (260k held-out test) sliced to the leading n particles."""
+    if DATA_SRC["name"] == "hls4ml":
+        assert sort == "pt", "hls4ml inputs come in native pT order; use --sort pt"
+        d = _np.load(DATA_HLS4ML)
+        xtr = d["x_train"][:, :n].astype(_np.float32)
+        shift, scale = xtr.mean(axis=(0, 1), keepdims=True), xtr.std(axis=(0, 1), keepdims=True)
+        x = xtr if split == "train" else d["x_test"][:, :n].astype(_np.float32)
+        del xtr
+        x = ((x - shift) / scale)[..., [5, 8, 11]]
+        y = _np.eye(5, dtype=_np.float32)[d["y_train" if split == "train" else "y_test"].astype(int)]
+        return x, y
     d = _np.load(DATA)
     x = sort_jets(d[f"x_{split}"].astype(_np.float32), sort)[:, :n]
     return x, d[f"y_{split}"].astype(_np.float32)

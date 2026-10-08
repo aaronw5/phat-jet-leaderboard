@@ -433,3 +433,50 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
   global; full PHAT patch sizes 4/8/16/32 and d32; JEDI and JEDI+GMP float references.
 - Launched **q24**: Linformer QAT with attention protection (+GMP d16, + shared bits, native) — first Linformer QAT
   since the protection fixes (earlier q9 Linformer QAT collapsed to 69.5%).
+
+## 2026-10-08 — NRP compliance fix
+- Audit against nrp.ai usage policy: helper was a Job running `sleep infinity` (bannable) and idle (0 of 16 CPU,
+  0.2 of 48 GiB); every GPU job used ~0.5–0.8 of 4 CPUs and 2–4 of 24 GiB (<20%), GPU util often 0–5% (<40%).
+- Fixed: helper → Deployment `anrunw-helper` (1 CPU/2 GiB, exempt); heavy CPU work → `cpu_job.sh` Jobs.
+  make_var_jobs: up to 5 trainings run concurrently per GPU, requests == limits sized to use (1 CPU + 5 GiB per run),
+  GPU list without A100/H100 (no access), T4 or 2080 Ti (11 GB). q22/q23/q24/f11 cancelled (q22/q23 ~2 h in) and
+  relaunched as 9 GPU jobs (was 27); partial dirs moved to runs/_aborted/1008-0552 (not deleted).
+
+## Backlog (launch as GPUs free up; always pack ≤5 runs per GPU — see NRP rules)
+1. f11 winners → QAT (5000 ep, ensemble KD, latency-only targets 400k–1M EBOPs), N=64 and N=32, 2 seeds each.
+2. PHAT patch-size / head-count QAT sweep around the best f11 PHAT form (p4/8/16, heads 1/2/4).
+3. JEDI-backbone (q22/q23) winners: 2nd seed, width 96/128, N=32, higher EBOPs (no LUT cap), + per-slot bits.
+4. Linformer: if q24 learns → k 4/8/16, width 32/64, 2 heads (user: 2 heads best), Linformer + PHAT block QAT.
+5. Depth with the latency headroom: JEDI with 2 interaction rounds; PHAT-JEDI-global 2–3 blocks.
+6. Stronger teacher: re-build the distillation ensemble from the best wide f11 float models.
+7. Every new best: da4ml trace (cpu_job.sh) → Verilog + Verilator bit-exact → leaderboard.
+- 07:55 — f11 first results (float, test): **full PHAT d32 p8 2 heads 81.65 / 81.68%** (best float of the project;
+  d16 was 81.3–81.4), JEDI float 81.64%, native Linformer d16 80.10/80.06 (d32 ~81.4 val, d64 ~81.2 val mid-run),
+  Linformer+PHAT d32 mix 80.68/80.85. Queued **q25** (1 packed job): QAT of PHAT d32 p8 h2 (full and attention-on-32,
+  1M EBOPs), native Linformer d32 (600k) / d64 (1M), JEDI at 600k — latency is the test (full PHAT attention was 130 ns at d16).
+- 08:30 — f11 more: **JEDI+GMP 81.80%** (81.82/81.77, rej 71.2; JEDI alone 81.62), **PHAT+GMP+JEDI-global attention-free d32 81.71%** (6.3k params, rej 70.3), PHAT no-GMP JEDI-global d64 81.53, native Linformer d32 81.35. Queued **q26**: QAT of PHAT+GMP+JEDI-global d32 (400k/800k, +shared bits) and JEDI+GMP (400k/800k).
+- 09:00 — f11: Linformer+PHAT block + GMP + JEDI global d32 **81.78%** (81.88/81.68, rej 70.9); PHAT+GMP+JEDI-global with patch attention d32 81.63; Linformer+PHAT d16 mix 81.07. Pattern: GMP + JEDI global interaction is what matters (81.7–81.8 with or without Linformer/attention); attention-free version (q26) is the latency-friendly QAT candidate; Linformer+GMP+JEDI-global QAT goes in the next batch if q26 confirms.
+- 09:35 — **Linformer QAT collapsed again (q24)**, all 3 arms → chance (20.3%) as EBOPs fell below ~1–2M (from scratch,
+  bits 7/7/0/0, attention protection on); val was 0.78–0.79 at 2–3M EBOPs. q24 cancelled (dirs kept). Rebuilt q25
+  (not started) as **float-init QAT** from the f11 float checkpoints (wide initial bits 10/10/3/8): PHAT d32 p8 h2
+  (full / attention-on-32), native Linformer d32, Linformer+GMP+JEDI-global d32, + JEDI 600k (scratch).
+- f11 more: full PHAT d32 p8 (4 heads) **81.82%** (seed0); patch 16 81.45, patch 32 81.37 (d16); native Linformer d64
+  ~81.65 val mid-run; 2–3-block native Linformer ~81 val mid-run.
+- 10:40 — q23/q25/q26 all landed on k8s-3090-01.usd.edu and failed UnexpectedAdmissionError before starting (bad GPU node, no work lost). Node excluded; resubmitted as q23-00-r2 / q25-00-r2 / q26-00-r2.
+- 13:30 — **Linformer QAT root cause (diag_minmax.py, CPU job).** Float-init Linformer QAT also collapsed (q25 nl-d32:
+  81% → 80.5% down to ~3.8M EBOPs, then 72.6% @ 2.2M, chance @ 2.0M). Re-fitting activation integer ranges with
+  hgq trace_minmax makes compressed checkpoints *worse* (→ chance below ~4M EBOPs) and reloaded checkpoints disagree
+  with their training-time val (e.g. saved 80.53% → reload 33.3%; 78.4% → 49.3%): the compressed Linformer relies on
+  **wrap-around overflow** of activation quantizers and is numerically fragile (GPU TF32 vs CPU float32 flips wraps).
+  Fix under test: `--datalane_overflow SAT` (saturating activations). Killed only the dead nl-d32 process in
+  q25-00-r3 (PHAT attention runs there are healthy, 80.3–80.6% val).
+  Caution for every attention model: check reload/test == training val and Verilator bit-exactness before trusting.
+- 14:10 — SAT build/trace check passed. Launched **q27** (1 job, 4 runs): float-init QAT with saturating activations — native Linformer d32 (600k) / d64 (1M), Linformer+GMP+JEDI-global d32 (800k), PHAT d32 p8 h2 (1M; SAT check vs the wrap-mode q25 run).
+- 14:45 — Wrap-overflow collapse is broader than Linformer: PHAT attention d32 float-init (q25) 43.6% @ 779k and
+  attention-on-32 20.3% @ 624k; Linformer+GMP+JEDI-global (wrap) 59% @ 1.9M; attention-free PHAT+GMP+JEDI-global with
+  *shared* bits 42.3% @ 720k (per-element-bit version healthy 80.2–80.4% @ 0.7–0.9M). Cancelled q25-00-r3 and stopped
+  the two collapsing processes in q25-01-r3 / q26-00-r3 (dirs kept). SAT versions are queued in q27.
+  Healthy compressed QAT: **JEDI+GMP 81.18% val @ 509k EBOPs** (q26), JEDI 81.03% @ 514k (q25), JEDI+GMP 80.72–80.74%
+  @ 288–360k, JEDI no-KD 80.86% @ 224k (KD run drifting down to 78.3%).
+- 15:40 — Reload check (diag_minmax, CPU job): JEDI-family Pareto ckpts reload within +0.05–0.10 of saved val and are unchanged by trace_minmax → robust (the wrap fragility is specific to attention / Linformer / shared-bit models). Best: JEDI per-particle bits 81.41–81.47% val @ 372k EBOPs, 81.31–81.39% @ 226–261k; JEDI 600k 81.40–81.45% @ 509–512k. Tracing them (cpu_job trace-jedi).
+- 16:30 — **Synthesized JEDI-family QAT (our pipeline, test):** JEDI per-particle bits 81.04–81.09% @ 142–181k LUT (12 stg, 40 ns), 81.26% @ 275k (47 ns); JEDI 600k 81.24–81.37% @ 325–344k (43 ns); JEDI+GMP 81.22% @ 235–238k (43 ns). Plateau ~81.3% vs official JEDI perm-inv 81.81% @ 164k — and our float JEDI is only 81.62% → suspect the input pipeline. Added `--data hls4ml` (JEDI's exact inputs; standardized eta/phi span ±3.8) to train/eval/verilog; launched **f12** float test (JEDI, JEDI+GMP, PHAT+GMP+JEDI-global d32, PHAT d32 p8; 2 seeds).

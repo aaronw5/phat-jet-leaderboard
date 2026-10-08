@@ -135,6 +135,8 @@ def main():
     p.add_argument("--share_qk", action="store_true")
     p.add_argument("--no_head1", action="store_true")
     p.add_argument("--unshared", action="store_true", help="position-specific weights in embed/GMP-pointwise/FFN (JEDI-style)")
+    p.add_argument("--data", default="ours", choices=["ours", "hls4ml"], help="input pipeline (hls4ml = JEDI-linear's exact inputs)")
+    p.add_argument("--datalane_overflow", default="wrap", choices=["wrap", "SAT"], help="activation overflow: wrap (default) or saturate")
     p.add_argument("--shared_bits", action="store_true", help="data-lane bits shared across particles (JEDI perm-inv quantization)")
     p.add_argument("--arch", default="phat", choices=["phat", "jedi"], help="jedi: JEDI-linear gnn backbone (+ GMP if --gmp grid)")
     p.add_argument("--jedi_width", type=int, default=64)
@@ -185,6 +187,10 @@ def main():
 
     # Protocol: validation = fixed 10% split of the 620k training jets (used for monitoring and Pareto
     # checkpoint selection); the 260k "x_val" file is the paper's held-out TEST set, touched only at the end.
+    from phat_variants import use_data
+    use_data(a.data)
+    if a.data == "hls4ml" and a.teacher_logits:
+        raise SystemExit("teacher logits are aligned to the 'ours' train order; no distillation with --data hls4ml")
     xall, yall = load_split("train", a.n, a.sort)
     xte, yte = load_split("val", a.n, a.sort)
     perm = np.random.default_rng(1234).permutation(len(xall))
