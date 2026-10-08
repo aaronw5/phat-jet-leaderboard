@@ -175,6 +175,8 @@ def main():
     p.add_argument("--attn_floor", type=float, default=0.0, help="min fractional bits on attention Q/K/V/O lanes")
     p.add_argument("--attn_in_floor", type=float, default=None, help="min fractional bits on the INPUT lanes of every attention sub-layer (QK, softmax, AV, projections, Linformer E/F)")
     p.add_argument("--attn_ifloor", type=float, default=None, help="min integer bits on those attention input lanes (no clipping of scores)")
+    p.add_argument("--attn_fixed_f", type=float, default=None, help="attention without QAT: fixed fractional bits on attention data lanes (frozen)")
+    p.add_argument("--attn_fixed_wb", type=float, default=6, help="attention without QAT: fixed weight bit width (frozen)")
     p.add_argument("--attn_wbits", type=float, default=None, help="min bit width of attention projection weights")
     p.add_argument("--attn_beta_scale", type=float, default=1.0, help="EBOPs pressure multiplier on *attn* layers")
     a = p.parse_args()
@@ -242,6 +244,15 @@ def main():
             accf = float((lf.argmax(1) == yva[:50000].argmax(1)).mean())
             print(f"init from float: {n} layers, float val_acc={accf:.4f} post-transfer val_acc={acc0:.4f}", flush=True)
             assert acc0 > 0.9 * accf, "transfer collapsed: widen --bw_k/--bw_a/--i0_a"
+        if a.attn_fixed_f is not None:
+            from hgq.utils import trace_minmax
+            from phat_variants import freeze_attn_bits
+            trace_minmax(model, xtr[:100000], batch_size=4096)  # calibrate integer bits to the data ranges (no overflow)
+            nfix = freeze_attn_bits(model, a.attn_fixed_f, a.attn_fixed_wb)
+            lg = model.predict(xva[:50000], batch_size=4096, verbose=0)
+            accx = float((lg.argmax(1) == yva[:50000].argmax(1)).mean())
+            print(f"attention quantized without QAT: f={a.attn_fixed_f} weight bits={a.attn_fixed_wb}, {nfix} quantizer "
+                  f"params frozen, val_acc after freeze={accx:.4f}", flush=True)
         cbs = [ClampSoftmaxExpBits(), FreeEBOPs()] + cbs
         if a.ebops_target > 0:
             cbs.append(AttnBetaPID(a.ebops_target, a.beta0, a.beta_kp, a.beta_ki, a.beta_warmup, a.beta_max, a.beta_damp,

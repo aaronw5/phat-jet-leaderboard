@@ -447,6 +447,32 @@ def build_variant(
     return keras.Model(feats, logits, name=name or ("phat_var" + ("_q" if q else "")))
 
 
+def freeze_attn_bits(qmodel, frac_bits, weight_bits):
+    """'Quantize attention without QAT': on every attention sub-layer (name contains 'attn': Q/K/V/O projections, QK
+    and AV einsums, softmax exp/inverse tables, Linformer E/F) set data-lane fractional bits to `frac_bits` and weight
+    bit widths to `weight_bits`, and make all of that layer's quantizer parameters non-trainable (integer bits keep
+    whatever trace_minmax calibrated). QAT then compresses only the rest of the network, so the EBOPs pressure can no
+    longer drive attention to f < 0 and a constant output (diag_attn.py, 2026-10-08)."""
+    import numpy as np_
+    n = 0
+    for layer in qmodel.layers:
+        if "attn" not in layer.name:
+            continue
+        for w in layer.weights:
+            path = w.path
+            if "quantizer" not in path:
+                continue
+            leaf = path.split("/")[-1]
+            if leaf == "f" and "kif" in path:
+                w.assign(np_.full(w.shape, float(frac_bits), dtype="float32"))
+            elif leaf == "b" and "kbi" in path:
+                w.assign(np_.full(w.shape, float(weight_bits), dtype="float32"))
+            if leaf in ("f", "i", "b", "k"):
+                w.trainable = False
+                n += 1
+    return n
+
+
 def transfer_weights(qmodel, fmodel):
     """Copy float weights into same-named Q layers (Q layers carry extra quantizer vars)."""
     fw = {l.name: l.get_weights() for l in fmodel.layers if l.get_weights()}

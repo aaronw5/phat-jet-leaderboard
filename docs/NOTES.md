@@ -551,3 +551,8 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
   JEDI-linear (1.56× its LUT, 0.55× its latency). 2nd seeds reproduce: JEDI+GMP 400k KD seed1 82.12–82.16% @ 575–589k
   (seed0 82.30%); JEDI float-init KD seed1 81.89% @ 283.7k. More traces: JEDI+GMP float-init KD 82.08% @ 408k,
   81.75% @ 257k. Verilog for the 81.91% @ 225.7k design started.
+- 19:40 EDT — **N=32 above JEDI-linear (79.04%)**, JEDI inputs, float-init, synthesized: JEDI+GMP distilled (q35)
+  79.79% @ 369.8k LUT, 46.6 ns; JEDI per-slot (q34) 79.76% @ 299.4k; JEDI 79.58% @ 303.5k, 79.21% @ 196.6k (43 ns);
+  JEDI per-slot 79.31% @ 221.2k (43 ns); JEDI+GMP 350k 79.30–79.58% @ 275–368k. N=64 226k design (q31 JEDI+GMP
+  float-init 81.91%): avg rej 75.6 < JEDI-linear 80.4 — beats it on accuracy only; the 255k design (81.85%, rej 81.1)
+  beats it on both. Freeze-attention check ("attention without QAT") running on the f12 PHAT d32 p8 h4 model.
