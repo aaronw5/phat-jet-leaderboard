@@ -360,6 +360,17 @@ def build_variant(
                 mixed = ops.reshape(mixed, (-1, NP, d_model))
                 tok = _dense(d_model, q, name="patch_msg_proj" + S)(mixed)
                 msg = ops.repeat(tok, patch_size, axis=1)
+            elif global_mode == "jedi":  # JEDI-linear interaction: x = relu(Ws x) + relu(Wd mean_n x) (replaces x, no residual)
+                s_ = _pdense(d_model, q, activation="relu", name="interact_self" + S)(src)
+                if q:
+                    from hgq.layers import QSum
+                    from math import log2
+                    m = QSum(axes=1, scale=2.0 ** -round(log2(num_particles)), keepdims=True, name="interact_pool" + S)(src)
+                else:
+                    m = ops.sum(src, axis=1, keepdims=True) * 2.0 ** -round(_np.log2(num_particles))
+                g = _ldense("mix", d_model, q, activation="relu", name="interact_global" + S)(m)
+                x = s_ + ops.repeat(g, num_particles, axis=1)
+                msg = None
             elif global_mode == "mean":
                 if q:
                     from hgq.layers import QSum
@@ -371,7 +382,8 @@ def build_variant(
                 msg = ops.repeat(ops.reshape(g, (-1, 1, d_model)), num_particles, axis=1)
             else:
                 raise ValueError(global_mode)
-            x = x + msg
+            if msg is not None:
+                x = x + msg
 
         if ffn_hidden or ffn_mult:
             h = _ldense("ffn", ffn_hidden or ffn_mult * d_model, q, activation="relu", name="ffn1" + S, per_particle=True)(x)
@@ -439,8 +451,13 @@ def build_q_from_args(a):
     s1 = QuantizerConfigScope(default_q_type="kif", place="datalane", overflow_mode="wrap", f0=g("bw_a"),
                               i0=g("i0_a"), fr=MonoL1(l1), ic=MinMax(0, 12), **({"fc": fc} if fc else {}))
     ATTN_FLOOR["f"] = g("attn_floor") if (g("attn_floor") or 0) > 0 else None
+    # shared_bits: data-lane bit-widths shared across the particle axis (JEDI-linear 'perm-inv' quantization)
+    s2 = QuantizerConfigScope(place="datalane", heterogeneous_axis=(-1,)) if g("shared_bits") else None
     with s0, s1, LayerConfigScope(beta0=0):
-        return build_variant(quantized=True, **kw_from_args(a))
+        if s2 is None:
+            return build_variant(quantized=True, **kw_from_args(a))
+        with s2:
+            return build_variant(quantized=True, **kw_from_args(a))
 
 
 # ----------------------------------------------------------------------------- data

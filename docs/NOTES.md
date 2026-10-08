@@ -418,3 +418,18 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
   N=64 pT-sorted 80.94% / 0.9589 / 66.0, 70.7k LUT; N=32 perm-inv 79.04% / 0.9519 / 36.8, 135.9k; N=32 pT-sorted 78.00% / 0.9472 / 30.7, 45.3k.
   16-feature: N=64 perm-inv 82.35% / 83.2 rej (192k LUT post-route, out of envelope), N=64 81.78% @ 84k.
   Our best in-envelope (80.89%, rej 59.3) trails the perm-inv N=64 model by 0.9 pt accuracy and ~21 in rejection (W/Z mostly).
+
+## 2026-10-08 — envelope loosened to latency only (user decision)
+- Source check: the 10%-of-LUTs / 173k cap came only from the NeurIPS rebuttal ("Approximately 10% of the LUTs are
+  available because Correlator Layer 2 must also perform jet clustering"); no CMS document found confirming it.
+  JEDI-linear paper: "sub-100 ns latency and sub-10 ns initiation intervals", resources "no more than one SLR … or even
+  less". CMS DeepSets L1T tagger (arXiv:2509.24371): 13% of VU13P LUTs, 234 ns tagging inside CTL2's 1 µs @ 360 MHz.
+- **New envelope: latency < 100 ns (< 30 stages @ 300 MHz), II = 1; no LUT cap** (LUT reported as cost). Target:
+  beat 3-feature JEDI-linear perm-inv 81.81% (N=64) / 79.04% (N=32). make_leaderboard/trace_run/loop_status/page updated.
+- Added `--global_mode jedi` (JEDI interaction inside the PHAT block: x = relu(Ws x) + relu(Wd mean x)) and
+  `--shared_bits` (perm-inv data-lane quantization for any model).
+- Launched **f11** float screen (2 seeds): native Linformer d16/32/64, 2–3 blocks; Linformer inside the PHAT block
+  (+GMP, mix / JEDI global, d16–64); PHAT without GMP + JEDI global (patch attention or none, d32/64); PHAT + GMP + JEDI
+  global; full PHAT patch sizes 4/8/16/32 and d32; JEDI and JEDI+GMP float references.
+- Launched **q24**: Linformer QAT with attention protection (+GMP d16, + shared bits, native) — first Linformer QAT
+  since the protection fixes (earlier q9 Linformer QAT collapsed to 69.5%).

@@ -80,13 +80,13 @@ svg text{font:12px system-ui,sans-serif;fill:var(--fg)}
 <th data-k="test_acc">Test acc (%)</th><th data-k="test_auc">AUC</th><th data-k="rej_W">Rej W</th><th data-k="rej_Z">Rej Z</th><th data-k="rej_t">Rej t</th><th data-k="avg_bg_rej">Avg rej</th>
 <th data-k="params">Params</th><th data-k="lut">LUT</th><th data-k="lut_pct">% VU13P</th><th data-k="ff">FF</th><th>DSP</th><th>BRAM</th><th data-k="stages">Stages</th><th data-k="latency_ns">Latency (ns)</th><th>II</th>
 </tr></thead><tbody id="body"></tbody></table></div>
-<div class="legend">Accuracies on the 260k held-out test set; rejection = 1/FPR at 80% signal efficiency vs q/g background (paper definition). FPGA columns: da4ml estimates at 300 MHz, hard_dc=2 (post-route only where marked). Envelope: ≤173k LUT (10% VU13P), &lt;30 stages, II=1, ≥80.9% (N=64) / ≥78.0% (N=32).</div>
+<div class="legend">Accuracies on the 260k held-out test set; rejection = 1/FPR at 80% signal efficiency vs q/g background (paper definition). FPGA columns: da4ml estimates at 300 MHz, hard_dc=2 (post-route only where marked). Envelope (since 2026-10-08): latency only — &lt;100 ns (&lt;30 stages @ 300 MHz), II=1; no LUT cap (LUT is shown as cost; the earlier ≤173k / 10%-of-VU13P cap came from the rebuttal and is not a confirmed CMS number). Target: beat the best 3-feature JEDI-linear (perm-inv): 81.81% (N=64), 79.04% (N=32).</div>
 </div>
 </main>
 <script>
 const METRICS={test_acc:['Test accuracy (%)',v=>100*v,false],test_auc:['AUC',v=>v,false],avg_bg_rej:['Avg background rejection @80%',v=>v,true],rej_W:['Rejection W',v=>v,true],rej_Z:['Rejection Z',v=>v,true],rej_t:['Rejection t',v=>v,true],
  lut:['LUT (da4ml est.)',v=>v,true],lut_pct:['% VU13P',v=>v,true],ff:['FF',v=>v,true],stages:['Pipeline stages',v=>v,false],latency_ns:['Latency (ns)',v=>v,false],ebops:['EBOPs',v=>v,true],params:['Parameters',v=>v,true]};
-const ENV={lut:172800,lut_pct:10,stages:30,latency_ns:100,test_acc:0.809};
+const ENV={stages:30,latency_ns:100,test_acc:0.8181};
 const FAM=e=>{const c=e.config||{}; if(e.reference) return 'reference'; const a=c.local==='none'?'no-attn':c.local==='linf'?'linformer':(c.attn_particles&&c.attn_particles<c.n?'attn-top'+c.attn_particles:'patch-attn'); return (c.unshared?'per-slot ':'')+a+(c.mode==='qat'?' (QAT)':' (float)');};
 const KINDS={io:'var(--io)',linear:'var(--linear)',geo:'var(--geo)',attn:'var(--attn)',mix:'var(--mix)',pool:'var(--pool)'};
 let DATA=null,sortK='test_acc',sortDir=-1,open=new Set();
@@ -95,7 +95,7 @@ const fint=v=>v==null?'<span class="na">–</span>':Math.round(v).toLocaleString
 function hw(e){ if(e.best_in_envelope) return e.best_in_envelope; if(e.traced&&e.traced.length){ return e.traced.reduce((a,b)=>(b.test_acc||0)>(a.test_acc||0)?b:a); } return null; }
 function flat(e){ const t=hw(e); const r=e.bg_rej||(e.seeds&&e.seeds.find(s=>s.bg_rej)||{}).bg_rej||(t&&t.bg_rej)||{};
   return {...e, test_acc:(e.test_acc!=null?e.test_acc:(t?t.test_acc:null)), rej_W:r.W, rej_Z:r.Z, rej_t:r.t, avg_bg_rej:e.avg_bg_rej!=null?e.avg_bg_rej:(t?t.avg_bg_rej:null),
-   lut:t?t.lut:null, lut_pct:t?t.lut_pct:null, ff:t?t.ff:null, stages:t?t.stages:null, latency_ns:t?t.latency_ns:null, inenv:!!(t&&t.in_envelope&&t.test_acc>=(e.N==32?0.78:0.809)), hwrow:t}; }
+   lut:t?t.lut:null, lut_pct:t?t.lut_pct:null, ff:t?t.ff:null, stages:t?t.stages:null, latency_ns:t?t.latency_ns:null, inenv:!!(t&&t.in_envelope&&t.test_acc>=(e.N==32?0.7904:0.8181)), hwrow:t}; }
 function render(){
   const q=document.getElementById('q').value.toLowerCase(), mode=document.getElementById('mode').value, n=document.getElementById('nsel').value;
   const onlyenv=document.getElementById('onlyenv').checked, showref=document.getElementById('showref').checked;
@@ -156,7 +156,7 @@ function drawPareto(){ if(!DATA) return; const xk=document.getElementById('px').
   for(const v of ticks(y0,y1,ly)){const y=Y(v); s+=`<line x1="${L}" y1="${y}" x2="${W-R}" y2="${y}" stroke="var(--line)"/><text x="${L-6}" y="${y+4}" text-anchor="end" style="font-size:11px">${v>=1e4?v.toExponential(0):v}</text>`;}
   s+=`<text x="${(L+W-R)/2}" y="${H-12}" text-anchor="middle">${xl}${lx?' (log)':''}</text><text transform="translate(16 ${(T+H-B)/2}) rotate(-90)" text-anchor="middle">${yl}${ly?' (log)':''}</text>`;
   const ex=ENV[xk],ey=ENV[yk]; if(ex!=null&&(!lx||ex>0)){const x=X(xf(ex)); if(x>L&&x<W-R) s+=`<line x1="${x}" y1="${T}" x2="${x}" y2="${H-B}" stroke="var(--ok)" stroke-dasharray="6 4"/><text x="${x+4}" y="${T+12}" fill="var(--ok)" style="font-size:11px">envelope</text>`;}
-  if(ey!=null){const y=Y(yf(ey)); if(y>T&&y<H-B) s+=`<line x1="${L}" y1="${y}" x2="${W-R}" y2="${y}" stroke="var(--ok)" stroke-dasharray="6 4"/><text x="${W-R-4}" y="${y-4}" text-anchor="end" fill="var(--ok)" style="font-size:11px">JEDI N=64 (80.9%)</text>`;}
+  if(ey!=null){const y=Y(yf(ey)); if(y>T&&y<H-B) s+=`<line x1="${L}" y1="${y}" x2="${W-R}" y2="${y}" stroke="var(--ok)" stroke-dasharray="6 4"/><text x="${W-R-4}" y="${y-4}" text-anchor="end" fill="var(--ok)" style="font-size:11px">JEDI-linear N=64 perm-inv (81.81%)</text>`;}
   const fams=[...new Set(pts.map(p=>p.fam))]; for(const p of pts){ const ref=p.fam==='reference'; s+=`<g class="pt" data-id="${p.id}"><title>${p.name}${p.ckpt?' · '+p.ckpt:''}\n${xl}: ${p._x.toLocaleString()}\n${yl}: ${p._y.toLocaleString()}${p.lut?'\nLUT '+Math.round(p.lut).toLocaleString()+' · '+p.stages+' stages · '+p.latency_ns+' ns':''}${p.test_acc!=null?'\nacc '+(100*p.test_acc).toFixed(2)+'%':''}</title>${ref?`<path d="M${X(p._x)} ${Y(p._y)-7} l4 7 l-4 7 l-4 -7z" fill="var(--warn)" stroke="var(--fg)"/>`:`<circle cx="${X(p._x)}" cy="${Y(p._y)}" r="${p.inenv?6:4}" fill="${pcol(p.fam)}" stroke="${p.inenv?'var(--ok)':'none'}" stroke-width="2" opacity="0.85"/>`}</g>`; }
   let lg=''; fams.forEach((f,i)=>{lg+=`<g transform="translate(${L+8} ${T+8+i*16})">${f==='reference'?`<path d="M6 -6 l4 6 l-4 6 l-4 -6z" fill="var(--warn)"/>`:`<circle cx="6" cy="0" r="4" fill="${pcol(f)}"/>`}<text x="16" y="4" style="font-size:11px">${f}</text></g>`;});
   svg.innerHTML=s+lg; svg.querySelectorAll('.pt').forEach(g=>g.style.cursor='pointer'); svg.querySelectorAll('.pt').forEach(g=>g.onclick=()=>{document.querySelector('#views button[data-v=table]').click(); open.add(g.dataset.id); render(); const r=document.querySelector(`tr[data-id="${CSS.escape(g.dataset.id)}"]`); r&&r.scrollIntoView({block:'center'});}); }
