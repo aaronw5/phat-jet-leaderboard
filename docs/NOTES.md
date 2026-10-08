@@ -480,3 +480,32 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
   @ 288–360k, JEDI no-KD 80.86% @ 224k (KD run drifting down to 78.3%).
 - 15:40 — Reload check (diag_minmax, CPU job): JEDI-family Pareto ckpts reload within +0.05–0.10 of saved val and are unchanged by trace_minmax → robust (the wrap fragility is specific to attention / Linformer / shared-bit models). Best: JEDI per-particle bits 81.41–81.47% val @ 372k EBOPs, 81.31–81.39% @ 226–261k; JEDI 600k 81.40–81.45% @ 509–512k. Tracing them (cpu_job trace-jedi).
 - 16:30 — **Synthesized JEDI-family QAT (our pipeline, test):** JEDI per-particle bits 81.04–81.09% @ 142–181k LUT (12 stg, 40 ns), 81.26% @ 275k (47 ns); JEDI 600k 81.24–81.37% @ 325–344k (43 ns); JEDI+GMP 81.22% @ 235–238k (43 ns). Plateau ~81.3% vs official JEDI perm-inv 81.81% @ 164k — and our float JEDI is only 81.62% → suspect the input pipeline. Added `--data hls4ml` (JEDI's exact inputs; standardized eta/phi span ±3.8) to train/eval/verilog; launched **f12** float test (JEDI, JEDI+GMP, PHAT+GMP+JEDI-global d32, PHAT d32 p8; 2 seeds).
+- 17:00 — JEDI+GMP traced too: 81.22–81.29% @ 235–285k LUT (43–47 ns), 81.26% @ 401k. Leaderboard builder taught the new options (JEDI backbone, JEDI global, JEDI inputs, SAT, shared bits, float-init); published 228 models.
+- 18:00 — **Input pipeline is the gap (f12, float, mid-run val):** on JEDI's exact inputs JEDI reaches 82.24 / 81.87%
+  val at epoch ~160 (our inputs: 81.62% test), PHAT+GMP+JEDI-global d32 82.24% at epoch ~210 (ours 81.71%), JEDI+GMP
+  82.06% at epoch ~100 (ours 81.80%). ~+0.4–0.6 pt → explains our ~81.3% QAT plateau vs official 81.81%. f12 first
+  attempt OOM'd (loader cast 16 features to float32) → fixed (select 3 cols first), relaunched as f12-00-r2.
+  If test confirms: move all QAT to `--data hls4ml` (no distillation until teacher logits exist for that order).
+- Stopped 3 fully collapsed QAT processes (0 EBOPs at epoch ~3270: q22 jd64 ens/nokd, jd32); their earlier Pareto
+  ckpts are kept and already traced where good.
+- q27 (SAT) early: Linformer+GMP+JEDI 80.62% @ 3.2M, Linformer d64 80.67% @ 4.3M, PHAT d32 80.42% @ 3.3M; Linformer
+  d32 69.8% @ 2.4M (degrading even with SAT — watching).
+- 18:40 — **f12 test (float, JEDI's exact inputs): JEDI+GMP 82.59 / 82.68%, JEDI 82.39 / 82.33%, PHAT+GMP+JEDI-global
+  d32 82.30%** (same archs on our inputs: 81.80 / 81.62 / 81.71). Input pipeline = +0.6–0.9 pt; GMP adds +0.25 over JEDI.
+  → switched QAT to `--data hls4ml`: cancelled the 6 old-input QAT jobs (ckpts kept), launched **q28** (2 jobs, 8 runs,
+  float-init from f12): JEDI+GMP 230k/400k/700k, JEDI 230k (vs official 81.81% @ 227k), JEDI per-slot bits 400k,
+  PHAT+GMP+JEDI-global d32 600k, N=32 JEDI+GMP 200k / JEDI 170k (scratch). Building a JEDI-input ensemble teacher
+  (f12 JEDI+GMP ×2 + JEDI ×2 → runs/_seeds/ensemble4_hl_train_logits.npy) for a distilled follow-up stage.
+- 19:10 — Teacher ensemble4_hl built (f12 JEDI+GMP 82.59/82.68 + JEDI 82.39/82.33, test). Launched **q29** (1 job, 5 runs): distilled versions of the main q28 arms (JEDI+GMP 230k/400k, JEDI 230k, PHAT+GMP+JEDI-global d32 600k, N=32 JEDI+GMP 200k).
+- 19:45 — **Float-init failed for every JEDI-arch run in q28/q29** ("transfer collapsed"): float JEDI keeps BN as
+  separate `*_bn` layers while the Q model folds BN into QEinsumDenseBatchnorm, so the name-matched transfer drops BN
+  params. PHAT-arch float-init works (PHAT+GMP+JEDI-global d32 81.10% val @ 1.05M; distilled 81.79% early).
+  Relaunched the 8 JEDI-arch arms from scratch as **q30** (JEDI+GMP 230k/400k/700k, JEDI 230k, per-slot 400k, + KD
+  JEDI+GMP 230k/400k, JEDI 230k). TODO: fold float BN into the QEinsumDenseBatchnorm transfer.
+- 20:30 — Fixed float-init for the JEDI backbone: transfer_weights folds float BN into QEinsumDenseBatchnorm (kernel=W, bias=β, γ, mean=μ−b, var=var+1e-3−keras ε); verified on f12 JEDI+GMP: 81.19% right after transfer (float 82.37%, threshold 90%). q30 (scratch) had already started → kept; added **q31** (float-init JEDI+GMP 230k/400k, + KD 230k, JEDI KD 230k) for a scratch-vs-float-init comparison.
+- 21:10 — **Linformer does not survive QAT even with saturating activations** (q27): Linformer+GMP+JEDI-global SAT
+  66% @ 2.0M, native Linformer d64 SAT 41% @ 2.6M, d32 25% (stopped). PHAT patch attention with SAT is fine
+  (79.98% @ 1.84M) — so the failure is specific to Linformer's softmax over sequence-projected keys. Linformer stays a
+  float-only result (best float: native d64 81.58%, Linformer+GMP+JEDI-global d32 81.78% on our inputs).
+- JEDI-input QAT early (val): JEDI 230k distilled 81.71% @ 745k EBOPs (ep 281, scratch); JEDI float-init distilled
+  81.68% @ 2.4M; JEDI per-slot 81.58% @ 853k; JEDI+GMP 400k distilled 81.20% @ 1.3M; still compressing.

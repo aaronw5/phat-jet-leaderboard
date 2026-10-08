@@ -189,8 +189,8 @@ def main():
     # checkpoint selection); the 260k "x_val" file is the paper's held-out TEST set, touched only at the end.
     from phat_variants import use_data
     use_data(a.data)
-    if a.data == "hls4ml" and a.teacher_logits:
-        raise SystemExit("teacher logits are aligned to the 'ours' train order; no distillation with --data hls4ml")
+    if a.teacher_logits and (a.data == "hls4ml") != ("_hl" in os.path.basename(a.teacher_logits)):
+        raise SystemExit("teacher logits must come from the same data file / jet order ('_hl' in the name <=> --data hls4ml)")
     xall, yall = load_split("train", a.n, a.sort)
     xte, yte = load_split("val", a.n, a.sort)
     perm = np.random.default_rng(1234).permutation(len(xall))

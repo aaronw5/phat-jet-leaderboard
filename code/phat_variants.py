@@ -404,6 +404,18 @@ def transfer_weights(qmodel, fmodel):
     fw = {l.name: l.get_weights() for l in fmodel.layers if l.get_weights()}
     n = 0
     for layer in qmodel.layers:
+        if hasattr(layer, "moving_mean") and hasattr(layer, "bn_gamma") and layer.name + "_bn" in fw and layer.name in fw:
+            # JEDI-style float EinsumDense(W, b) + BatchNormalization(γ, β, μ, var; ε=1e-3) -> HGQ QEinsumDenseBatchnorm,
+            # which computes x·(W·s) + bias − mean·s with s = γ/sqrt(var + keras ε):
+            # kernel=W, bias=β, γ=γ, mean=μ−b, var=var+1e-3−keras ε  (exactly the float function)
+            (W, b), (g, beta, mu, var) = fw[layer.name], fw[layer.name + "_bn"]
+            layer.kernel.assign(W)
+            layer.bias.assign(beta)
+            layer.bn_gamma.assign(g)
+            layer.moving_mean.assign(mu - b)
+            layer.moving_variance.assign(var + 1e-3 - keras.config.epsilon())
+            n += 1
+            continue
         if layer.name not in fw:
             continue
         src, dst = fw[layer.name], layer.get_weights()
@@ -493,11 +505,12 @@ def load_split(split, n, sort="kt"):
     if DATA_SRC["name"] == "hls4ml":
         assert sort == "pt", "hls4ml inputs come in native pT order; use --sort pt"
         d = _np.load(DATA_HLS4ML)
-        xtr = d["x_train"][:, :n].astype(_np.float32)
+        cols = [5, 8, 11]  # select before casting: per-feature stats are independent, and 16 float32 features OOM'd
+        xtr = d["x_train"][:, :n, cols].astype(_np.float32)
         shift, scale = xtr.mean(axis=(0, 1), keepdims=True), xtr.std(axis=(0, 1), keepdims=True)
-        x = xtr if split == "train" else d["x_test"][:, :n].astype(_np.float32)
+        x = xtr if split == "train" else d["x_test"][:, :n, cols].astype(_np.float32)
         del xtr
-        x = ((x - shift) / scale)[..., [5, 8, 11]]
+        x = (x - shift) / scale
         y = _np.eye(5, dtype=_np.float32)[d["y_train" if split == "train" else "y_test"].astype(int)]
         return x, y
     d = _np.load(DATA)
