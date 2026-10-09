@@ -140,6 +140,8 @@ def main():
     p.add_argument("--shared_bits", action="store_true", help="data-lane bits shared across particles (JEDI perm-inv quantization)")
     p.add_argument("--arch", default="phat", choices=["phat", "jedi"], help="jedi: JEDI-linear gnn backbone (+ GMP if --gmp grid)")
     p.add_argument("--jedi_width", type=int, default=64)
+    p.add_argument("--jedi_rounds", type=int, default=1, help="JEDI interaction rounds (2 = deeper, uses latency headroom)")
+    p.add_argument("--features", type=int, default=3, choices=[3, 16], help="16 = all hls4ml constituent features (privileged float teacher only)")
     p.add_argument("--jedi_head", default="64,32,16")
     p.add_argument("--jedi_per_slot_bits", action="store_true", help="per-particle-slot data-lane bits (JEDI pT-sorted) instead of shared (perminv)")
     p.add_argument("--w_l1", type=float, default=0.0, help="L1 on kernels (sparsity; zero weights are free in RTL)")
@@ -193,7 +195,7 @@ def main():
     # Protocol: validation = fixed 10% split of the 620k training jets (used for monitoring and Pareto
     # checkpoint selection); the 260k "x_val" file is the paper's held-out TEST set, touched only at the end.
     from phat_variants import use_data
-    use_data(a.data)
+    use_data(a)  # passes data name AND feature count (16-feature teacher)
     if a.teacher_logits and (a.data == "hls4ml") != ("_hl" in os.path.basename(a.teacher_logits)):
         raise SystemExit("teacher logits must come from the same data file / jet order ('_hl' in the name <=> --data hls4ml)")
     xall, yall = load_split("train", a.n, a.sort)

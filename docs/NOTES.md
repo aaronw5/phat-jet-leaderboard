@@ -556,3 +556,43 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
   JEDI per-slot 79.31% @ 221.2k (43 ns); JEDI+GMP 350k 79.30–79.58% @ 275–368k. N=64 226k design (q31 JEDI+GMP
   float-init 81.91%): avg rej 75.6 < JEDI-linear 80.4 — beats it on accuracy only; the 255k design (81.85%, rej 81.1)
   beats it on both. Freeze-attention check ("attention without QAT") running on the f12 PHAT d32 p8 h4 model.
+- 20:10 EDT — **Improvement round.** Code: `--jedi_rounds` (repeat the JEDI interaction; latency headroom),
+  `--features 16` (all hls4ml constituent features — privileged float teacher only; student hardware stays 3-feature).
+  Queued **f14** float screen (2 seeds): 16-feature JEDI teacher w128, JEDI(+GMP) 2 rounds, JEDI+GMP w96, GMP 4×4,
+  GMP 8 ch; **q36** matched-LUT QAT: JEDI+GMP float-init KD @ 150k/180k, JEDI per-slot KD @ 180k, and JEDI-linear's
+  own schedule (fixed β ramp, 7000 ep, LR restarts every 100 ep) for JEDI and JEDI+GMP.
+  Freeze-attention check: f=6/wb=6 after trace_minmax 66.3%, f=4/wb=4 27.3% (from 81.8% post-transfer) → variant
+  check running (trace only; f8/wb8 ± trace; f10/wb10; f8/wb10).
+
+## Backlog (updated 20:10 EDT)
+1. Privileged distillation: when f14 16-feature teacher lands → teacher logits (+ ensemble with 3-feature floats) → KD
+   QAT of JEDI+GMP (N=64/32) at matched LUT.
+2. Matched-LUT claim (≤164k): q36 results → Verilog/bit-exact of the best ≤164k point above 81.81%.
+3. PHAT patch attention (user priority, f12 82.54% float): pick the freeze setting that holds accuracy → frozen-attention
+   QAT; compare with the q32 floor runs; then latency check (must stay < 100 ns).
+4. Depth/width/GMP-cost (f14) winners → QAT.
+5. HGQ-LUT (QDenseT) on the JEDI head (shared weights); N=48; attention on leading 16.
+6. Vivado post-route for the verified designs if a licensed machine is available (asked the user).
+- 20:20 EDT — Freeze check: trace_minmax alone 81.78% (harmless); **f=8/wb=8 frozen 81.72%** (vs 81.79% post-transfer) → launched **q37**: PHAT d32 p8 h4 (f12 82.54% float), attention frozen at 8 bits, rest QAT @ 1M/2M (KD), 1M no-KD, attention-on-32 @ 1M.
+- 20:50 EDT — **Systematic NaN in JEDI-arch QAT at epoch 3270–3271** (7 runs: q22 ×4, q25, q28 ×2; any data/target/KD;
+  no PHAT run affected): loss NaN → EBOPs 0 → BetaPID log(0) ValueError. Suspect hgq `i_decay_speed=1e-3` in our
+  weight-quantizer scope (integer bits of exactly-zero weights decay without bound, ~650k steps → overflow); JEDI-
+  linear's code doesn't set it. diag_nan.py (CPU job) reading pre-NaN ckpts. Live JEDI runs reach epoch 3270 in
+  1.3 h (q30 jd64 KD, q31 jd64 fi KD) to ~11 h.
+- **q30-00 and q34-00 evicted** ~19:55 EDT (TaintManagerEviction on node k8s-haosu-18 → BackoffLimitExceeded); runs at
+  epoch 1100–2000 / 1300–1500, Pareto ckpts kept. Resubmit after the NaN fix (q34 N=32 first).
+- 21:05 EDT — **NaN root cause confirmed** (diag_nan.py): last pre-NaN ckpt (q28 jdg32, epoch 3256) has a weight
+  quantizer's integer bits at −127.3 (−126.1 at epoch 3178): `i_decay_speed=1e-3` lets integer bits of exactly-zero
+  weights decay without bound until 2^±i leaves float32 range at epoch ~3270. Fix: `ic=MinMax(-24, 24)` on the weight
+  scope (no new variables → old ckpts still load). Applies to runs started from now (q36, q37, f14, f15, q38); runs in
+  flight keep the old snapshot and will stop at ~3270 with their Pareto fronts intact.
+  f14 16-feature teacher failed (train_variant passed only the data name to use_data → 3 features loaded) → fixed,
+  resubmitted as **f15**. **q38** = q34 N=32 runs re-submitted with the fix.
+- 21:15 EDT — q37 (frozen attention) crashed at trace_minmax: hgq Dataset pins cpu:0 but GPU jobs ran with JAX_PLATFORMS=cuda → 'Unknown backend cpu'. Job env now JAX_PLATFORMS=cuda,cpu; q37 resubmitted as q37-00-r2.
+- 21:45 EDT — f15 (16-feature teacher) OOMKilled at 8 GiB → resubmitted f15-00-r2 with 24 GiB. Cancelled q28-01 (one superseded run left; pod under NRP memory floor 17%).
+- 22:20 EDT — f14 depth: 2-round JEDI 82.32/82.32% (rej 92.7/91.0), 2-round JEDI+GMP 82.58/82.58% (rej 98.5/96.6) vs 1-round JEDI 82.39/82.33 (rej 91.0/91.1), JEDI+GMP 82.59/82.68 (rej 98.1/99.4) → no gain from depth (+60% params) → no QAT. **GMP's effect is mostly rejection: +8% avg (91 → 98–99), W 132–138 → 144–147, Z 114–121 → 125–132**, plus +0.25 pt accuracy.
+- 22:35 EDT — f14 GMP 4×4 grid: 82.60/82.57% test (rej 94.2/96.1) ≈ 8×8 (82.59/82.68, rej 98–99) at ~1/4 the GMP cost → **q39**: JEDI+GMP4×4 float-init KD QAT @ 150k/180k/230k (matched-LUT push).
+- 22:50 EDT — f14 GMP 8 ch 82.60% (rej 96.1) ≈ 16 ch → cheaper GMP is free. **f15 16-feature JEDI w128 82.56/82.63% (rej 92.5/91.8) ≈ 3-feature JEDI+GMP (82.59/82.68, rej 98–99): GMP with 3 features matches 16 features on accuracy and beats it on rejection.** Building ensemble8_hl teacher (JEDI+GMP 8×8 ×2, 4×4 ×2, 8ch, 16-feature ×2, 2-round) for a stronger distillation stage.
+- 23:10 EDT — q39 (JEDI+GMP 4×4) float-init 'transfer collapsed': 4×4 cells sum ~4× more particles than 8×8 and wrapped the default 8 integer bits at init → resubmitted q39-00-r2 with --i0_a 11.
+- 23:30 EDT — q38 (N=32) died at epoch ~537: OSError Errno 5 writing the log to the Ceph volume from node fiona-prg1.cesnet.cz (Prague). Node excluded; resubmitted q38-00-r2. f14 GMP 8 ch seed1 82.65% (rej 95.9); width 96 82.43/82.42% (rej 91.8/90.2) < width 64 → keep 64.
+- 23:45 EDT — ensemble8_hl teacher built (JEDI+GMP 8×8 ×2, 4×4 ×2, 8ch, 16-feature w128 ×2, 2-round). **q40**: KD from it — JEDI+GMP 8ch float-init @ 150k/180k/230k (matched-LUT push), JEDI+GMP 230k (teacher-8 vs teacher-4 comparison). JEDI+GMP 400k KD ep1883: **82.06% @ 280.5k LUT, 12 stg, 40 ns** (Verilog/bit-exact running).

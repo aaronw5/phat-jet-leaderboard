@@ -269,7 +269,8 @@ def _qbn_dense(eq, shape, q, name, activation=None, bias_axes="C"):
 
 
 def build_jedi(num_particles=64, width=64, head_widths=(64, 32, 16), n_classes=5, quantized=False, uq1=True,
-               gmp_mode="none", gmp_edges=None, gmp_bins=8, gmp_bounds=1.6, gmp_kernel=3, gmp_channels=16, name=None):
+               gmp_mode="none", gmp_edges=None, gmp_bins=8, gmp_bounds=1.6, gmp_kernel=3, gmp_channels=16, name=None,
+               n_feat=3, rounds=1):
     """JEDI-linear 'gnn' backbone (github.com/calad0i/JEDI-linear src/model.py get_gnn), optionally with a PHAT-JeT
     GMP message. Per particle: phi1 = MLP(x); interaction s = MLP(phi1), d = MLP(mean_n phi1), h = s + d (+ GMP msg);
     h = MLP(h); sum-pool; head MLP. uq1=True shares data-lane bit-widths across the particle axis (permutation-
@@ -279,7 +280,7 @@ def build_jedi(num_particles=64, width=64, head_widths=(64, 32, 16), n_classes=5
     from math import log2
     q = quantized
     N, W = num_particles, width
-    feats = keras.Input((N, 3), name="features")
+    feats = keras.Input((N, n_feat), name="features")
     eta, phi = feats[..., 1], feats[..., 2]
     scopes = []
     if q:
@@ -290,23 +291,27 @@ def build_jedi(num_particles=64, width=64, head_widths=(64, 32, 16), n_classes=5
         s.__enter__()
     try:
         x = _qbn_dense("bnc,cC->bnC", (N, W), q, "embed", activation="relu")(feats)
-        s_ = _qbn_dense("bnc,cC->bnC", (N, W), q, "interact_self", activation="relu")(x)
         if q:
             from hgq.layers import QAdd, QSum
-            m = QSum(axes=1, scale=2.0 ** -round(log2(N)), keepdims=True, name="interact_pool")(x)
-        else:
-            m = ops.sum(x, axis=1, keepdims=True) * 2.0 ** -round(log2(N))
-        d_ = _qbn_dense("bnc,cC->bnC", (1, W), q, "interact_global", activation="relu")(m)
-        h = QAdd(name="interact_add")([s_, d_]) if q else s_ + d_
-        if gmp_mode == "grid":
-            if gmp_edges is None:
-                gmp_edges = _np.linspace(-gmp_bounds, gmp_bounds, gmp_bins + 1).tolist()
-            C = gmp_channels or W
-            xin = x if C == W else x[..., :C]
-            msg = gmp_grid(xin, eta, phi, C, q, gmp_edges, gmp_kernel, name="gmp")
-            msg = _qbn_dense("bnc,cC->bnC", (N, W), q, "gmp_pointwise")(msg)
-            h = QAdd(name="gmp_add")([h, msg]) if q else h + msg
-        h = _qbn_dense("bnc,cC->bnC", (N, W), q, "phi2", activation="relu")(h)
+        for r in range(rounds):  # rounds>1: repeat the interaction (latency headroom); r=0 keeps the original layer names
+            R = "" if r == 0 else f"_r{r + 1}"
+            s_ = _qbn_dense("bnc,cC->bnC", (N, W), q, "interact_self" + R, activation="relu")(x)
+            if q:
+                m = QSum(axes=1, scale=2.0 ** -round(log2(N)), keepdims=True, name="interact_pool" + R)(x)
+            else:
+                m = ops.sum(x, axis=1, keepdims=True) * 2.0 ** -round(log2(N))
+            d_ = _qbn_dense("bnc,cC->bnC", (1, W), q, "interact_global" + R, activation="relu")(m)
+            h = QAdd(name="interact_add" + R)([s_, d_]) if q else s_ + d_
+            if gmp_mode == "grid" and r == 0:
+                if gmp_edges is None:
+                    gmp_edges = _np.linspace(-gmp_bounds, gmp_bounds, gmp_bins + 1).tolist()
+                C = gmp_channels or W
+                xin = x if C == W else x[..., :C]
+                msg = gmp_grid(xin, eta, phi, C, q, gmp_edges, gmp_kernel, name="gmp")
+                msg = _qbn_dense("bnc,cC->bnC", (N, W), q, "gmp_pointwise")(msg)
+                h = QAdd(name="gmp_add")([h, msg]) if q else h + msg
+            h = _qbn_dense("bnc,cC->bnC", (N, W), q, "phi2" + R, activation="relu")(h)
+            x = h
         if q:
             pooled = QSum(axes=1, scale=1 / 16, keepdims=False, name="agg_sum")(h)
         else:
@@ -327,12 +332,13 @@ def build_variant(
     local_mode="mha", global_mode="mha", ffn_mult=1, pre_norm="tanh", attn_bits=None,
     parallel_attn=False, attn_particles=None, share_qk=False, use_head1=True, linf_k=4, unshared=False,
     ffn_hidden=None, mix_hidden=None, n_blocks=1, lut_layers=None, lut_dhl=8, name=None,
-    arch="phat", jedi_width=64, jedi_uq1=True, jedi_head=(64, 32, 16),
+    arch="phat", jedi_width=64, jedi_uq1=True, jedi_head=(64, 32, 16), n_feat=3, jedi_rounds=1,
 ):
     if arch == "jedi":
         return build_jedi(num_particles=num_particles, width=jedi_width, head_widths=jedi_head, n_classes=n_classes,
                           quantized=quantized, uq1=jedi_uq1, gmp_mode=gmp_mode, gmp_edges=gmp_edges, gmp_bins=gmp_bins,
-                          gmp_bounds=gmp_bounds, gmp_kernel=gmp_kernel, gmp_channels=gmp_channels or 16, name=name)
+                          gmp_bounds=gmp_bounds, gmp_kernel=gmp_kernel, gmp_channels=gmp_channels or 16, name=name,
+                          n_feat=n_feat, rounds=jedi_rounds)
     UNSHARED["on"] = bool(unshared)
     LUT["roles"] = set((lut_layers or "").split(",")) - {""}
     LUT["d_hl"] = lut_dhl
@@ -519,7 +525,8 @@ def kw_from_args(a):
                 ffn_hidden=g("ffn_hidden") or None, mix_hidden=g("mix_hidden") or None,
                 n_blocks=g("n_blocks") or 1, lut_layers=g("lut_layers") or None, lut_dhl=g("lut_dhl") or 8,
                 arch=g("arch") or "phat", jedi_width=g("jedi_width") or 64, jedi_uq1=not g("jedi_per_slot_bits"),
-                jedi_head=tuple(int(v) for v in (g("jedi_head") or "64,32,16").split(",")))
+                jedi_head=tuple(int(v) for v in (g("jedi_head") or "64,32,16").split(",")),
+                n_feat=int(g("features") or 3), jedi_rounds=int(g("jedi_rounds") or 1))
 
 
 def build_q_from_args(a):
@@ -532,8 +539,10 @@ def build_q_from_args(a):
     floor = g("floor_bits") or 0.0
     fc = MinMax(floor, 16) if floor > 0 else None
     l1 = g("l1_reg") if g("l1_reg") is not None else 1e-8
+    # ic bounds the weight integer bits: with i_decay_speed the integer bits of exactly-zero weights decayed without
+    # limit and crossed float32's exponent range (~-128) at epoch ~3270 -> NaN in every JEDI-arch run (diag_nan.py, 2026-10-08)
     s0 = QuantizerConfigScope(default_q_type="kbi", b0=g("bw_k"), overflow_mode="wrap", i0=g("i0_w"),
-                              fr=MonoL1(l1), ir=MonoL1(l1), i_decay_speed=1e-3, **({"fc": fc} if fc else {}))
+                              fr=MonoL1(l1), ir=MonoL1(l1), i_decay_speed=1e-3, ic=MinMax(-24, 24), **({"fc": fc} if fc else {}))
     # datalane_overflow: "wrap" (default; values past the learned integer range wrap around) or "SAT" (saturate).
     # Linformer QAT learned to depend on wrap-around and became numerically fragile (2026-10-08 diagnosis) -> SAT.
     s1 = QuantizerConfigScope(default_q_type="kif", place="datalane", overflow_mode=g("datalane_overflow") or "wrap", f0=g("bw_a"),
@@ -567,7 +576,7 @@ def sort_jets(x, sort):
 
 
 DATA_HLS4ML = "/j-jepa-vol/phat-jet-aaron/data/hls4ml150p_c64_f16.npz"  # raw hls4ml 150p (prep_hls4ml_raw.py)
-DATA_SRC = {"name": "ours"}
+DATA_SRC = {"name": "ours", "features": 3}
 
 
 def use_data(cfg_or_name):
@@ -576,6 +585,8 @@ def use_data(cfg_or_name):
     standardized with the train-set mean/std over the leading N slots)."""
     name = cfg_or_name if isinstance(cfg_or_name, str) else (cfg_or_name.get("data") if isinstance(cfg_or_name, dict) else getattr(cfg_or_name, "data", None))
     DATA_SRC["name"] = name or "ours"
+    nf = None if isinstance(cfg_or_name, str) else (cfg_or_name.get("features") if isinstance(cfg_or_name, dict) else getattr(cfg_or_name, "features", None))
+    DATA_SRC["features"] = int(nf or 3)
 
 
 def load_split(split, n, sort="kt"):
@@ -583,7 +594,7 @@ def load_split(split, n, sort="kt"):
     if DATA_SRC["name"] == "hls4ml":
         assert sort == "pt", "hls4ml inputs come in native pT order; use --sort pt"
         d = _np.load(DATA_HLS4ML)
-        cols = [5, 8, 11]  # select before casting: per-feature stats are independent, and 16 float32 features OOM'd
+        cols = [5, 8, 11] if DATA_SRC["features"] == 3 else list(range(16))  # 16 = privileged-teacher inputs (training only)
         xtr = d["x_train"][:, :n, cols].astype(_np.float32)
         shift, scale = xtr.mean(axis=(0, 1), keepdims=True), xtr.std(axis=(0, 1), keepdims=True)
         x = xtr if split == "train" else d["x_test"][:, :n, cols].astype(_np.float32)
