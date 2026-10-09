@@ -661,3 +661,4 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
   Alkaid StopIteration was an alkaid 0.8.1 bug (FVArray of all constants) -> patched in alkaid_all.py; 66 retried OK.
   Params backfilled from configs (results/params.json); page shows run status; 93 untraced QAT runs being traced.
 - 18:00 UTC — cancelled q43 (PHAT: fix8 x3 collapsed, fl2g out of envelope ~190 ns; ckpts kept). Submitted q44: GMP alive x per-slot bits (N=64 t180k/t250k scratch + fi2; N=32 t180k/t250k) + GMP-alive fi2 t200k.
+- 23:00 UTC — alkaid interval AssertionError = alkaid 0.8.1 bug (binary-LUT cmvm shortcut assumes unsigned 1-bit lanes; signed 1-bit lanes from per-slot bits give negative LUT address). alkaid_all.py retries with solver_options binary_lut=False (recorded per row). q44 N=32 per-slot+GMP: 79.71% / 79.66% @ 89.9 ns, 79.32% @ 86.6 ns; q44 GMP fi2 N=64 81.91% @ 86.6 ns.
