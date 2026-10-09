@@ -655,3 +655,9 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
   57 stages = 190 ns (da4ml understates). Older patch-attention PHAT designs: alkaid 150-200 ns. Attention depth
   (scores -> softmax -> weighted sum) dominates the critical path; compression doesn't remove it.
 - Alkaid StopIteration on larger designs (q42 ep198/ep334, q43): alkaid_all.py now prints the traceback.
+- 17:30 UTC — q42 (GMP alive) later checkpoints, Alkaid latency (JEDI-linear: 81.81% @ 164k LUT, alkaid 73.3 ns):
+  N=64: 82.04% @ 299k / 86.6 ns; 82.03% @ 284k / 86.6 ns; 81.93% @ 251k / 83.2 ns; 81.91% (4×4) / 83.2 ns;
+  81.87% @ 261k / 83.2 ns; 81.74% @ 217k / 79.9 ns; 81.69% @ 168k / 76.6 ns.  N=32: 79.31% / 79.23% @ 76.6 ns.
+  Alkaid StopIteration was an alkaid 0.8.1 bug (FVArray of all constants) -> patched in alkaid_all.py; 66 retried OK.
+  Params backfilled from configs (results/params.json); page shows run status; 93 untraced QAT runs being traced.
+- 18:00 UTC — cancelled q43 (PHAT: fix8 x3 collapsed, fl2g out of envelope ~190 ns; ckpts kept). Submitted q44: GMP alive x per-slot bits (N=64 t180k/t250k scratch + fi2; N=32 t180k/t250k) + GMP-alive fi2 t200k.
