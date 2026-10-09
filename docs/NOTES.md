@@ -648,3 +648,10 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
   output quantizers were trainable and the EBOPs penalty pruned their bits to 0. From scratch (i0_w=0) they were dead
   from step 0 (1 wraps to 0). So GMP's hardware value is untested so far; q42 (fixed, non-trainable 1-bit indicators)
   is the first real test. Leaderboard flags all such runs (gmp_dead + description note).
+- 14:00 UTC — **q42 (GMP alive) Alkaid results, N=64:** 81.93% @ 79.9 ns (4×4, 229k LUT), 81.85% @ 83.2, 81.88% @ 86.6,
+  82.15% @ 89.9, 81.93% @ 89.9, 82.12% @ 96.6 (borderline). N=32: 79.13% @ 83.2 ns (206k LUT), 79.45% @ 89.9 ns.
+  Early (ep ~700/5000). GMP gain vs dead-GMP q33 at matched latency so far small (82.15 vs 82.06 @ 89.9 ns).
+- **PHAT patch attention does not fit:** q43 fl2g compressed to 2.85M EBOPs = 81.34%, 2.59M LUT (150% VU13P), da4ml
+  57 stages = 190 ns (da4ml understates). Older patch-attention PHAT designs: alkaid 150-200 ns. Attention depth
+  (scores -> softmax -> weighted sum) dominates the critical path; compression doesn't remove it.
+- Alkaid StopIteration on larger designs (q42 ep198/ep334, q43): alkaid_all.py now prints the traceback.
