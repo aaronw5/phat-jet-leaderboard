@@ -598,3 +598,53 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
 - 23:45 EDT — ensemble8_hl teacher built (JEDI+GMP 8×8 ×2, 4×4 ×2, 8ch, 16-feature w128 ×2, 2-round). **q40**: KD from it — JEDI+GMP 8ch float-init @ 150k/180k/230k (matched-LUT push), JEDI+GMP 230k (teacher-8 vs teacher-4 comparison). JEDI+GMP 400k KD ep1883: **82.06% @ 280.5k LUT, 12 stg, 40 ns** (Verilog/bit-exact running).
 - 00:20 EDT — **Matched-LUT point: JEDI+GMP float-init (q31 jdg64-hl-fi2-t230k ep1797) 81.83% @ 166.9k LUT (9.7%), 12 stg, 40 ns** vs JEDI-linear 81.81% @ 158k (da4ml, ours) / 163.9k post-route, 40 ns (da4ml) — accuracy tie at ~equal LUT; Verilog/bit-exact + rejection running. Also JEDI float-init KD 81.87% @ 195.7k, 40 ns; JEDI+GMP 400k KD 82.06% @ 280.5k, 40 ns (both Verilog running). Page republished (302 models).
 - 00:50 EDT — **Bit-exact (Verilator 2000 jets, max|err| 0): JEDI+GMP 400k KD ep1883 82.06% test, rej 88.4, 280.5k LUT, 12 stg, 40 ns; JEDI float-init KD ep1810 81.87%, rej 80.9, 195.7k LUT, 12 stg, 40 ns.** 7 verified designs ≥ JEDI-linear; the 280k one beats it on accuracy (+0.25) and rejection (+8) at the same da4ml latency (40 ns).
+- 01:15 EDT — **167k matched-LUT design bit-exact (81.83%), but avg rej 72.6 < JEDI-linear 80.4** → accuracy tie at equal
+  LUT, not a win on rejection. Cleanest win: 280k design (82.06%, rej 88.4, 40 ns) — +0.25 acc, +8 rej at JEDI's latency.
+  q40 8-channel GMP float-init transfer collapsed (40.6% vs 82.8%) like 4×4 → --i0_a 11; q39-r2 hung 11 min at the
+  matplotlib font-cache import (volume stall?). Cancelled both, resubmitted q39-00-r3 and q40-00-r2.
+- 02:05 EDT — Cheaper-GMP float-init transfers still collapse with --i0_a 11 (4×4: 62.8%, 8ch: 40.6% vs 82.9% float) → **q41** trains 4×4 and 8-channel GMP from scratch with the 8-model teacher (150k/180k/230k), + 8×8 float-init teacher-8 run; q39/q40 cancelled.
+- 03:00 EDT — Alkaid env ready (env-alkaid312: alkaid 0.8.1, hgq2 0.2.0, keras 3.15.1, py3.12). First Alkaid latency job hung in D state (ceph_mdsc_wait_request) on k8s-haosu-24; CephFS stalls cluster on haosu-24 / ry-gpu-01 / fullerton gpu05 → excluded from cpu_job.sh; rerun as alkaid-lat2.
+- 03:30 EDT — **Alkaid latency calibration on JEDI-linear perm-inv N=64 (official model, loads fine in the new env:
+  81.64% on 20k test jets):** combinational critical path 65.0 ns; pipelined with ≤3.0 ns of logic per stage → 22 stages
+  = **73.3 ns @ 300 MHz** vs Vivado post-route **78 ns** (24 cycles @ 3.26 ns achieved) → within ~6%. Our da4ml
+  convention (cutoff 4.0) gave the same model 40 ns → **all da4ml latencies on the page are ~2× optimistic.** Alkaid LUT
+  140k vs post-route 164k (−15%); da4ml 158k (−4%) → keep da4ml LUT, use Alkaid (cutoff 3.0 ns, 300 MHz) for latency.
+  Our designs gave 43–48% in the new env with positional load_weights (HGQ 0.1.9 → 0.2.0 variable order differs) →
+  those Alkaid numbers are invalid; redoing with by-name weight export (export_named_weights.py).
+- 04:40 EDT — **Realistic latency.** da4ml critical path (orig env, exact model) vs Alkaid critical path (ns):
+  JEDI-linear 46.0 vs 65.0 (×1.41); ours 82.06% design 47.0 vs 70.9 (×1.51); ours 82.30% 56.0 vs 82.7 (×1.48) — our
+  Alkaid runs used HGQ 0.2.0 (bit widths/weights loaded by name, but forward numerics differ: 47.9%/43.4% acc) so the
+  structure is right, numerics not. Calibrated latency (Alkaid, ≤3.0 ns logic/stage, 300 MHz): JEDI-linear 22 stg
+  73.3 ns (post-route 78 ns); **82.06% design ≈ 77–80 ns; 82.30% design ≈ 90–93 ns** — both < 100 ns. The page's
+  da4ml-cutoff-4 latencies (40–47 ns) understate by ~2×. Next: find the layer where HGQ 0.2.0 diverges (layer-output
+  diff across envs) so Alkaid can run on every design.
+- 05:55 EDT — **CephFS mount failures for new pods** (MountVolume.MountDevice DeadlineExceeded/Aborted on k8s-chase-ci-07 and rci-tide-gpu-04, 20+ min each) on top of the earlier MDS read stalls; running pods unaffected. Layer-diff job left pending to mount when Ceph recovers. Blocks new CPU jobs (Alkaid layer diff, traces, Verilog) until then.
+- 06:30 EDT — Ceph mounts still failing for new pods (~2 h; latest FailedMount 05:28Z, ours + other users'). q35 (N=32 JEDI+GMP) stopped at epoch 3270 (started before the NaN fix; Pareto ckpts kept). **q41-01 (8-ch GMP ×2 + 8×8 teacher-8) never started** (no log.csv; BackoffLimitExceeded during the outage) → resubmit when mounts recover. q41-00 (4×4 GMP), q31/q32/q33/q36/q37/q38 training normally.
+- 09:05 UTC — **q41-00 (JEDI+GMP 4×4, scratch, teacher-8) completed all 5000 epochs → NaN fix confirmed (past epoch 3270).** Best val 82.16/82.19/82.20% (150k/180k/230k); final models degraded at the end (test 50.7/79.7/80.3%) → Pareto ckpts need tracing once Ceph mounts recover (CPU jobs blocked since 03:32 UTC).
+- 09:35 UTC — **Ceph mounts recovered at ~09:30 UTC** (outage ~6 h, 03:32–09:30). Resubmitted q41-01 as q41-00-r2; trace round trace-tick5 (q41 4×4 GMP, q36 matched-LUT + JEDI schedule, q38/q35 N=32, q37/q32 PHAT attention).
+- 10:30 UTC — **GMP was dead in from-scratch QAT.** check_gmp_batch.py: in q30 jdg64-hl-t400k-kd ep317 (82.30%) and
+  ep1883 (82.06%) every GMP layer outputs 0 (oh_gmp_* indicators, cell, scatter, dwconv, gather); only gmp_pointwise's
+  bias passes. Cause: the indicator QUnaryFunctionLUT output quantizer (kbi, 'table') inherits the weight scope's i0;
+  from scratch i0_w=0 → unsigned range [0,1) → an indicator value 1 wraps to 0 → GMP never trained. Float-init runs
+  start with i0=3 → expected alive (checking q31 fi2 / q41 4×4). So the verified "JEDI+GMP" designs are effectively
+  JEDI + constant offset (results stand, GMP attribution does not); likely also true of every from-scratch PHAT QAT
+  (incl. the earlier per-slot winners). Batch size is NOT the Alkaid-eval issue (old env batch 32 = 4096).
+  **Fix:** indicators get a fixed, non-trainable 1-bit unsigned output (kbi b0=1, i0=1, SAT); variable shapes
+  unchanged so old ckpts load with their trained (dead) values. Verifying on a fresh model (check_onehot.py).
+- 10:50 UTC — onehot fix verified (indicators sum to 1 per particle). **Submitted q42** (GMP alive, from scratch): jdg64ok t230k/t300k/t400k-kd8, t400k-kd (ablation vs q30 dead-GMP 82.30%), 4×4 t180k-kd8, N=32 t250k-kd.
+- 11:10 UTC — onehot fix broke loading pre-fix GMP ckpts (different indicator quantizer vars). Added phat_variants.load_q_model (tries fixed, falls back to legacy indicators); eval_ckpt/emit_verilog/component_costs/export_named_weights use it. Re-traced q36 jdg64 t180k-kd/jsched (trace-tick5b). trace check of fixed model OK. New-env (HGQ 0.2.0) acc = old env (81.88% both batch sizes) → rerunning alkaid_latency (alkaid-lat4) to see if the 47.9% reproduces.
+- 11:45 UTC — **All PHAT/Linformer QAT runs in q32 (input-side attention floors) and q37 (frozen 8-bit attention) DIVERGED**:
+  loss exploded (up to ~1e6, EBOPs spiking to 4e9) within ~300-500 epochs, then stuck at chance (val 0.20) for 2000+
+  epochs. Best val only at epoch ~0-15 (82.1-82.5%) when EBOPs were still 35-60M (far out of budget). Cancelled
+  anrunw-var-q37-00-r2 and anrunw-var-q32-00 (own jobs; ckpts/logs kept). Freezing/flooring attention bits is not
+  enough -- the divergence starts when the EBOPs penalty squeezes the rest of the PHAT model (the loss/EBOPs blow-up
+  suggests the beta ramp is too aggressive for PHAT from a 60M-EBOPs start). Next PHAT attempt: slower beta ramp /
+  lower beta_max, lr 3e-4, gradient clipping, and SAT on all data lanes.
+  trace_run --max 1 ZeroDivisionError fixed (picks the most accurate point).
+- Alkaid for the page: export_named_all.py (old env, by-name npz + gmp_oh_fix flag) -> alkaid_all.py (new env,
+  phat_variants rebuild + named load + 20k acc check + alkaid trace; latency = ceil(crit/3.0) x 3.33 ns). Testing.
+- 12:30 UTC — **GMP dead in EVERY pre-q42 QAT run (183 runs: 138 from scratch, 44 float-init; all PHAT + JEDI+GMP).**
+  Float-init runs (i0_w=3) are dead too (q31 jdg64-hl-fi2-t230k ep1797, q36 jdg64-hl-fi2-t150k-kd ep645): the indicator
+  output quantizers were trainable and the EBOPs penalty pruned their bits to 0. From scratch (i0_w=0) they were dead
+  from step 0 (1 wraps to 0). So GMP's hardware value is untested so far; q42 (fixed, non-trainable 1-bit indicators)
+  is the first real test. Leaderboard flags all such runs (gmp_dead + description note).

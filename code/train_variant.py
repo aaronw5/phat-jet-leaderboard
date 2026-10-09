@@ -149,6 +149,7 @@ def main():
     p.add_argument("--epochs", type=int, default=300)
     p.add_argument("--batch", type=int, default=2790)
     p.add_argument("--lr", type=float, default=3e-3)
+    p.add_argument("--clipnorm", type=float, default=None, help="Adam global-norm gradient clipping (PHAT QAT diverged without it, 2026-10-09)")
     p.add_argument("--restarts", type=int, default=1)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--label_smooth", type=float, default=0.0)
@@ -274,7 +275,7 @@ def main():
             k = getattr(l, "kernel", None)
             if k is not None:
                 model.add_loss(lambda k=k: a.w_l1 * ops.sum(ops.abs(k)))
-    model.compile(optimizer=keras.optimizers.Adam(a.lr), loss=make_loss(a.distill_alpha, a.distill_T, a.label_smooth),
+    model.compile(optimizer=keras.optimizers.Adam(a.lr, **({"clipnorm": a.clipnorm} if a.clipnorm else {})), loss=make_loss(a.distill_alpha, a.distill_T, a.label_smooth),
                   metrics=metrics, steps_per_execution=4)
     print(f"params {model.count_params()}  N={a.n}  train {xtr.shape}", flush=True)
     t0 = time.time()

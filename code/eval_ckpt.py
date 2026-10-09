@@ -31,15 +31,18 @@ a = p.parse_args()
 
 t0 = time.time()
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from phat_variants import build_q_from_args, build_variant, kw_from_args
+from phat_variants import build_q_from_args, build_variant, kw_from_args, load_q_model
 
 run_dir = os.path.dirname(a.ckpt) if os.path.basename(os.path.dirname(a.ckpt)) != "pareto" else os.path.dirname(os.path.dirname(a.ckpt))
 cfg_path = os.path.join(run_dir, "config.json")
 if os.path.basename(run_dir) == "_traced":  # snapshot naming: <run_tag>__<ckpt>.keras with <run_tag>__config.json
     cfg_path = os.path.join(run_dir, os.path.basename(a.ckpt).rsplit("__", 1)[0] + "__config.json")
 cfg = json.load(open(cfg_path))  # lambda GMP indicators: rebuild, then load_weights
-m = build_q_from_args(cfg) if cfg.get("mode") == "qat" else build_variant(quantized=False, **kw_from_args(cfg))
-m.load_weights(a.ckpt)
+if cfg.get("mode") == "qat":
+    m = load_q_model(cfg, a.ckpt)
+else:
+    m = build_variant(quantized=False, **kw_from_args(cfg))
+    m.load_weights(a.ckpt)
 N = m.inputs[0].shape[1]
 from phat_variants import load_split
 f = (f"{cfg.get('sort', 'kt')}-sorted hls4ml150p (JEDI-linear inputs)" if cfg.get("data") == "hls4ml"

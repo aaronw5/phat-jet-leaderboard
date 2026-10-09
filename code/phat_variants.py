@@ -162,8 +162,14 @@ def onehot_bins(coord, edges, q, tag):
     for g in range(nb):
         f = _bin_indicator(edges[g], edges[g + 1], g == 0, g == nb - 1)
         if q:
+            from hgq.config import QuantizerConfig
             from hgq.layers import QUnaryFunctionLUT
-            c = QUnaryFunctionLUT(f, name=f"oh_{tag}_{g}")(coord)
+            # the indicator is exactly 0 or 1: fixed 1-bit unsigned output (1 integer bit, saturating, not trainable).
+            # With the scope default i0=0 (from-scratch QAT) a 1 wrapped to 0 and GMP was dead from the start (2026-10-09).
+            # GMP_OH_FIX=False rebuilds the old (dead) indicators so pre-fix checkpoints still load (load_q_model).
+            kw = {"oq_conf": QuantizerConfig("kbi", "table", k0=False, b0=1, i0=1, trainable=False,
+                                             overflow_mode="SAT")} if GMP_OH_FIX["on"] else {}
+            c = QUnaryFunctionLUT(f, name=f"oh_{tag}_{g}", **kw)(coord)
         else:
             c = layers.Lambda(f, name=f"oh_{tag}_{g}")(coord)
         cols.append(ops.reshape(c, (-1, n, 1)))
@@ -527,6 +533,27 @@ def kw_from_args(a):
                 arch=g("arch") or "phat", jedi_width=g("jedi_width") or 64, jedi_uq1=not g("jedi_per_slot_bits"),
                 jedi_head=tuple(int(v) for v in (g("jedi_head") or "64,32,16").split(",")),
                 n_feat=int(g("features") or 3), jedi_rounds=int(g("jedi_rounds") or 1))
+
+
+GMP_OH_FIX = {"on": True}
+
+
+def load_q_model(cfg, ckpt):
+    """build_q_from_args + load_weights; checkpoints from before the GMP indicator fix (2026-10-09) have a different
+    indicator-quantizer layout, so fall back to rebuilding the legacy indicators for them."""
+    err = None
+    for on in (True, False):
+        GMP_OH_FIX["on"] = on
+        m = build_q_from_args(cfg)
+        try:
+            m.load_weights(ckpt)
+            m.gmp_oh_fix = on  # which indicator layout loaded (export_named_all.py records it)
+            return m
+        except ValueError as e:
+            err = e
+        finally:
+            GMP_OH_FIX["on"] = True
+    raise err
 
 
 def build_q_from_args(a):
