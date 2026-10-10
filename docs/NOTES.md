@@ -663,3 +663,8 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
 - 18:00 UTC — cancelled q43 (PHAT: fix8 x3 collapsed, fl2g out of envelope ~190 ns; ckpts kept). Submitted q44: GMP alive x per-slot bits (N=64 t180k/t250k scratch + fi2; N=32 t180k/t250k) + GMP-alive fi2 t200k.
 - 23:00 UTC — alkaid interval AssertionError = alkaid 0.8.1 bug (binary-LUT cmvm shortcut assumes unsigned 1-bit lanes; signed 1-bit lanes from per-slot bits give negative LUT address). alkaid_all.py retries with solver_options binary_lut=False (recorded per row). q44 N=32 per-slot+GMP: 79.71% / 79.66% @ 89.9 ns, 79.32% @ 86.6 ns; q44 GMP fi2 N=64 81.91% @ 86.6 ns.
 - ~23:30 UTC — q44-01 pod evicted (node taint) at epoch ~1600; rerun from scratch as q45 (-b dirs). Alkaid retry2 (binary-LUT fallback) done.
+- 03:00 UTC (10-10) — **NEW BEST, verified:** q44 jdg64psok-hl-fi2-t180k-kd8 ep1613 (per-slot bits + GMP alive, float-init,
+  teacher-8): **81.87% test, 145k LUT (da4ml), alkaid 79.9 ns, Verilator bit-exact (2000 jets), avg rej 83.7.** Beats
+  JEDI-linear perm-inv (81.81%, 158k da4ml / 164k post-route, alkaid 73.3 ns) on accuracy AND LUT. Caveat: per-slot =
+  order-dependent (JEDI pT-sorted style; JEDI pT-sorted N=64 = 80.94% @ 71k).
+  Also bit-exact: ep931 82.06% @ 208k / 86.6 ns; q44 t250k ep1272 82.10% @ 217k / 86.6 ns.
