@@ -668,3 +668,6 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
   JEDI-linear perm-inv (81.81%, 158k da4ml / 164k post-route, alkaid 73.3 ns) on accuracy AND LUT. Caveat: per-slot =
   order-dependent (JEDI pT-sorted style; JEDI pT-sorted N=64 = 80.94% @ 71k).
   Also bit-exact: ep931 82.06% @ 208k / 86.6 ns; q44 t250k ep1272 82.10% @ 217k / 86.6 ns.
+- 04:30 UTC (10-10) — standalone/jedi_gmp_da4ml.py now has --design {ps_gmp_8187, jedi_gmp_8230, jedi_gmp_8206}; ps_gmp_8187 reproduced exactly (81.87%, AUC 0.9620, rej 127.0/106.1/18.1 avg 83.7, 144,614 LUT, Verilator bit-exact; Verilog in verilog/standalone_ps_gmp_8187). Code page artifact: https://claude.ai/artifact/3QNCNzrxvSdD5vnd8pLqy8
+- 05:00 UTC (10-10) — submitted q46: per-slot+GMP fi2 seeds 1/2 (t180k), t150k, t120k, N=32 fi t180k/t250k.
+- 05:20 UTC (10-10) — user: keep trying ideas, don't stop. Submitted q47: per-slot+GMP cheaper variants (4x4 grid t150k/t180k, 8 GMP ch, width 48, head 64-32 t180k/t250k), scratch, teacher-8.
