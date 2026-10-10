@@ -672,3 +672,6 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
 - 05:00 UTC (10-10) — submitted q46: per-slot+GMP fi2 seeds 1/2 (t180k), t150k, t120k, N=32 fi t180k/t250k.
 - 05:20 UTC (10-10) — user: keep trying ideas, don't stop. Submitted q47: per-slot+GMP cheaper variants (4x4 grid t150k/t180k, 8 GMP ch, width 48, head 64-32 t180k/t250k), scratch, teacher-8.
 - 07:30 UTC (10-10) — new verified: q44 jdg64psok-hl-fi2-t180k-kd8 ep1008 82.14% @ 197k LUT, alkaid 83.2 ns, bit-exact. Submitted q48: winner recipe 8000 ep / distill alpha 0.9 / T 5.
+- 08:00 UTC (10-10) — cancelled q41-00-r2 (submitted 09:35 10-09, before the GMP fix -> dead GMP, uninformative). Submitted q49: N=32 per-slot+GMP seed 1, 4x4 t150k, t120k.
+- 10:20 UTC (10-10) — q49 evicted (NodeNotReady) -> rerun as q50. q45 finished. Interim alkaid: q46 t120k ep546 82.17% @ 89.9 ns; q46 t150k ep851 81.92% @ 86.6; q46 N=32 fi t180k ep1089 79.58% @ 83.2.
+- 11:00 UTC (10-10) — submitted q51: winner recipe lr 1e-3 / SAT datalanes / beta_kp 0.05.
