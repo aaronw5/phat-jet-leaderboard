@@ -675,3 +675,4 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
 - 08:00 UTC (10-10) — cancelled q41-00-r2 (submitted 09:35 10-09, before the GMP fix -> dead GMP, uninformative). Submitted q49: N=32 per-slot+GMP seed 1, 4x4 t150k, t120k.
 - 10:20 UTC (10-10) — q49 evicted (NodeNotReady) -> rerun as q50. q45 finished. Interim alkaid: q46 t120k ep546 82.17% @ 89.9 ns; q46 t150k ep851 81.92% @ 86.6; q46 N=32 fi t180k ep1089 79.58% @ 83.2.
 - 11:00 UTC (10-10) — submitted q51: winner recipe lr 1e-3 / SAT datalanes / beta_kp 0.05.
+- 13:30 UTC (10-10) — **NEW verified compact bests:** q46 jdg64psok-hl-fi2-t150k-kd8 ep1619 = 81.84% @ 119k LUT, alkaid 76.6 ns, bit-exact (25% fewer LUT than JEDI perm-inv 81.81% @ 158k). q47 jdg64g4psok-hl-t150k-kd8 ep1491 (per-slot + 4x4 GMP, scratch) = 81.93% @ 139k LUT, avg rej 86.7, alkaid 76.6 ns, bit-exact. Seeds s1/s2 of the q44 recipe reproduce (81.90 @ 186k, 81.93 @ 173k).
