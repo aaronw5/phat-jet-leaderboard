@@ -102,7 +102,14 @@ def _einsum(eq, xs, q, name=None):
     return ops.einsum(eq, *xs)
 
 
+ATTN_NORM = {"mode": "softmax"}  # "relu": softmax-free attention, w = relu(q.k) -- no exp / reciprocal on the latency path
+
+
 def _softmax(x, q, name=None, exp_i_max=5):
+    if ATTN_NORM["mode"] == "relu":
+        # softmax-free attention: the exp + 1/sum chain dominated PHAT's critical path (150-200 ns in alkaid);
+        # relu scores keep the sparsity of attention, the normalisation is absorbed into the learned Q/K scale
+        return layers.ReLU(name=name)(x)
     if q:
         from hgq.config import QuantizerConfig
         from hgq.constraints import MinMax
@@ -276,7 +283,7 @@ def _qbn_dense(eq, shape, q, name, activation=None, bias_axes="C"):
 
 def build_jedi(num_particles=64, width=64, head_widths=(64, 32, 16), n_classes=5, quantized=False, uq1=True,
                gmp_mode="none", gmp_edges=None, gmp_bins=8, gmp_bounds=1.6, gmp_kernel=3, gmp_channels=16, name=None,
-               n_feat=3, rounds=1):
+               n_feat=3, rounds=1, attn="none", attn_k=16, attn_d=16):
     """JEDI-linear 'gnn' backbone (github.com/calad0i/JEDI-linear src/model.py get_gnn), optionally with a PHAT-JeT
     GMP message. Per particle: phi1 = MLP(x); interaction s = MLP(phi1), d = MLP(mean_n phi1), h = s + d (+ GMP msg);
     h = MLP(h); sum-pool; head MLP. uq1=True shares data-lane bit-widths across the particle axis (permutation-
@@ -316,6 +323,24 @@ def build_jedi(num_particles=64, width=64, head_widths=(64, 32, 16), n_classes=5
                 msg = gmp_grid(xin, eta, phi, C, q, gmp_edges, gmp_kernel, name="gmp")
                 msg = _qbn_dense("bnc,cC->bnC", (N, W), q, "gmp_pointwise")(msg)
                 h = QAdd(name="gmp_add")([h, msg]) if q else h + msg
+            if attn != "none" and r == 0:
+                # parallel sparse attention branch (like GMP: a message added to h, not a serial block): only the leading
+                # attn_k particles attend to each other; V = their first attn_d embedding channels (no Wv); relu or softmax
+                # scores; one projection back to W. Its chain (Wq/Wk -> QK -> AV -> proj) is shorter than GMP's, so it
+                # should cost LUTs but little or no latency (PHAT's serial attention cost +40-120 ns, 2026-10-10 screen).
+                K, Cd = min(attn_k, N), attn_d
+                xa = x[..., :K, :]
+                qa = _qbn_dense("bnc,cC->bnC", (K, Cd), q, "jattn_q")(xa)
+                ka = _qbn_dense("bnc,cC->bnC", (K, Cd), q, "jattn_k")(xa)
+                sc = _einsum("bkc,bjc->bkj", [qa, ka], q, name="jattn_qk")
+                wa = layers.ReLU(name="jattn_relu")(sc) if attn == "relu" else _softmax(sc, q, name="jattn_softmax")
+                oa = _einsum("bkj,bjc->bkc", [wa, xa[..., :Cd]], q, name="jattn_av")
+                oa = _qbn_dense("bnc,cC->bnC", (K, W), q, "jattn_pointwise")(oa)
+                if K < N:
+                    hk = QAdd(name="jattn_add")([h[..., :K, :], oa]) if q else h[..., :K, :] + oa
+                    h = layers.Concatenate(axis=-2, name="jattn_pad")([hk, h[..., K:, :]])
+                else:
+                    h = QAdd(name="jattn_add")([h, oa]) if q else h + oa
             h = _qbn_dense("bnc,cC->bnC", (N, W), q, "phi2" + R, activation="relu")(h)
             x = h
         if q:
@@ -339,12 +364,13 @@ def build_variant(
     parallel_attn=False, attn_particles=None, share_qk=False, use_head1=True, linf_k=4, unshared=False,
     ffn_hidden=None, mix_hidden=None, n_blocks=1, lut_layers=None, lut_dhl=8, name=None,
     arch="phat", jedi_width=64, jedi_uq1=True, jedi_head=(64, 32, 16), n_feat=3, jedi_rounds=1,
+    jedi_attn="none", jedi_attn_k=16, jedi_attn_d=16,
 ):
     if arch == "jedi":
         return build_jedi(num_particles=num_particles, width=jedi_width, head_widths=jedi_head, n_classes=n_classes,
                           quantized=quantized, uq1=jedi_uq1, gmp_mode=gmp_mode, gmp_edges=gmp_edges, gmp_bins=gmp_bins,
                           gmp_bounds=gmp_bounds, gmp_kernel=gmp_kernel, gmp_channels=gmp_channels or 16, name=name,
-                          n_feat=n_feat, rounds=jedi_rounds)
+                          n_feat=n_feat, rounds=jedi_rounds, attn=jedi_attn, attn_k=jedi_attn_k, attn_d=jedi_attn_d)
     UNSHARED["on"] = bool(unshared)
     LUT["roles"] = set((lut_layers or "").split(",")) - {""}
     LUT["d_hl"] = lut_dhl
@@ -518,6 +544,7 @@ def transfer_weights(qmodel, fmodel):
 def kw_from_args(a):
     """Model kwargs from a train_variant argparse namespace / config.json dict."""
     g = a.get if isinstance(a, dict) else (lambda k, d=None: getattr(a, k, d))
+    ATTN_NORM["mode"] = g("attn_norm") or "softmax"  # older configs have no attn_norm -> softmax
     edges = g("gmp_edges")
     if isinstance(edges, str):
         edges = [float(e) for e in edges.split(",")]
@@ -532,7 +559,8 @@ def kw_from_args(a):
                 n_blocks=g("n_blocks") or 1, lut_layers=g("lut_layers") or None, lut_dhl=g("lut_dhl") or 8,
                 arch=g("arch") or "phat", jedi_width=g("jedi_width") or 64, jedi_uq1=not g("jedi_per_slot_bits"),
                 jedi_head=tuple(int(v) for v in (g("jedi_head") or "64,32,16").split(",")),
-                n_feat=int(g("features") or 3), jedi_rounds=int(g("jedi_rounds") or 1))
+                n_feat=int(g("features") or 3), jedi_rounds=int(g("jedi_rounds") or 1),
+                jedi_attn=g("jedi_attn") or "none", jedi_attn_k=int(g("jedi_attn_k") or 16), jedi_attn_d=int(g("jedi_attn_d") or 16))
 
 
 GMP_OH_FIX = {"on": True}
