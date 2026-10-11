@@ -721,3 +721,4 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
 - 04:30 UTC (10-12) — bit-exact: q63 jdg64g4h2psok t150k-b ep1595 (81.91% @ 141k, 66.6 ns): beats JEDI-linear on all three axes.
 - 05:00 UTC (10-12) — submitted q69: winner follow-ups (one-hidden-layer heads 32/64, t120k, seed 1, width 48, 1x1 kernel; all per-slot + 4x4 GMP).
 - 06:00 UTC (10-12) — q68 default-settings parallel PHAT collapsed to 20% (gentle settings needed). Namespace pod quota full again -> q69 queued; cancelled my q68 (2/3 runs dead) and q64 (serial PHAT, traced 81.3% @ 1.5M LUT, cannot meet latency) to free 2 slots for q69. Ckpts/logs kept.
+- 21:00 UTC (10-12) — bit-exact: q63 w48 h2 t150k-b ep2002 81.79% @ 111k LUT, 66.6 ns (ties JEDI acc, -30% LUT, -6.7 ns); q63 k1 t180k-b ep1130 82.11% @ 207k, 79.9 ns. Also q63 4x4 h2 ep1681 81.81% @ 140k, 66.6 ns. Submitted q70: N=32 versions (4x4+h2 t100k/t120k, w48 4x4 h2 t100k).
