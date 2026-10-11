@@ -153,6 +153,7 @@ def main():
     p.add_argument("--epochs", type=int, default=300)
     p.add_argument("--batch", type=int, default=2790)
     p.add_argument("--lr", type=float, default=3e-3)
+    p.add_argument("--allow_transfer_drop", action="store_true", help="continue QAT even if float->Q transfer accuracy drops (QAT may recover)")
     p.add_argument("--clipnorm", type=float, default=None, help="Adam global-norm gradient clipping (PHAT QAT diverged without it, 2026-10-09)")
     p.add_argument("--restarts", type=int, default=1)
     p.add_argument("--seed", type=int, default=0)
@@ -250,7 +251,9 @@ def main():
             lf = fm.predict(xva[:50000], batch_size=4096, verbose=0)
             accf = float((lf.argmax(1) == yva[:50000].argmax(1)).mean())
             print(f"init from float: {n} layers, float val_acc={accf:.4f} post-transfer val_acc={acc0:.4f}", flush=True)
-            assert acc0 > 0.9 * accf, "transfer collapsed: widen --bw_k/--bw_a/--i0_a"
+            if not a.allow_transfer_drop:
+                assert acc0 > 0.9 * accf, "transfer collapsed: widen --bw_k/--bw_a/--i0_a"
+            print(f"transfer check: {acc0:.4f} vs float {accf:.4f} (continuing)", flush=True)
         if a.attn_fixed_f is not None:
             from hgq.utils import trace_minmax
             from phat_variants import freeze_attn_bits
