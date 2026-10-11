@@ -719,3 +719,5 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
 - 01:00 UTC (10-12) — submitted q68: parallel PHAT relu+JEDI global with DEFAULT QAT settings (+clipnorm) 500k/1M, and gentle + distill alpha 0.9 — tests whether the gentle settings cause PHAT's ~1 pt QAT loss.
 - 03:30 UTC (10-12) — **q63 per-slot + 4x4 GMP + head 64-32 (jdg64g4h2psok t150k -b) ep1595: 81.91% @ 141k LUT, alkaid 66.6 ns — beats JEDI-linear perm-inv (81.81% @ 158k, 73.3 ns) on accuracy, LUT AND latency.** ep1119 81.98% @ 184k, 69.9 ns; ep535 82.16% @ 313k, 79.9 ns. Verilator running.
 - 04:30 UTC (10-12) — bit-exact: q63 jdg64g4h2psok t150k-b ep1595 (81.91% @ 141k, 66.6 ns): beats JEDI-linear on all three axes.
+- 05:00 UTC (10-12) — submitted q69: winner follow-ups (one-hidden-layer heads 32/64, t120k, seed 1, width 48, 1x1 kernel; all per-slot + 4x4 GMP).
+- 06:00 UTC (10-12) — q68 default-settings parallel PHAT collapsed to 20% (gentle settings needed). Namespace pod quota full again -> q69 queued; cancelled my q68 (2/3 runs dead) and q64 (serial PHAT, traced 81.3% @ 1.5M LUT, cannot meet latency) to free 2 slots for q69. Ckpts/logs kept.
