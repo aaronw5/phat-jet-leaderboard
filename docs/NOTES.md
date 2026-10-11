@@ -696,3 +696,19 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
 - 10:00 UTC (10-11) — trace-tick13: q53 4x4 s1 ep1377 81.81% @ 126k, 79.9 ns; ep2562 81.64% @ 103k, 69.9 ns (faster than JEDI); q55 N=32 4x4 w48 ep2352 79.02% @ 85k, 73.3 ns; q54 short head w48 ep1079 81.92% @ 189k, 73.3 ns. Verilator running.
 - 11:00 UTC (10-11) — bit-exact: q53 4x4 s1 ep1377 (81.81% @ 126k, 79.9 ns), ep2562 (81.64% @ 103k, 69.9 ns), q55 N=32 4x4 w48 ep2352 (79.02% @ 85k, 73.3 ns).
 - 12:00 UTC (10-11) — f17 rest: JEDI+GMP1x1+relu attn 82.54/82.56 (> GMP1x1 82.45: attention recovers the 1x1 loss); JEDI+GMP+relu attn K64 82.74/82.55; Linformer relu no-GMP 82.26/82.14, softmax d32 82.46/82.36; PHAT patch-tokens only (no local attn) 81.73/81.75 (local attention matters in PHAT); PHAT relu no GMP 82.32/82.31. q59 pod failed at ep ~70 (gentle runs healthy 82.67% val; default-lr collapsing) -> q62 reruns the gentle two.
+- 13:00 UTC (10-11) — user: parallel GMP + ReLU attention? JEDI+GMP+par relu attn already is (q57/58/61). Added --phat_parallel (PHAT block with GMP / ReLU patch attention / global stage as parallel branches summed). f18 floats (4 configs x 2 seeds) + screen-lat3.
+- 13:30 UTC (10-11) — user: softmax too. Added --attn_norm linear / --jedi_attn linear (reassociated Q(K^T V)). f19 floats: parallel PHAT softmax (mha/JEDI global), parallel PHAT linear, JEDI+GMP+par linear attn K16/K64 (2 seeds). screen-lat4 adds softmax/linear parallel variants.
+- 14:00 UTC (10-11) — cms-ml namespace hit its 200-pod quota (75 running + 123 pending, mostly other users' pending GPU pods; mine 13 running + 1 pending). screen-lat3/4 and f19-01 cannot create pods yet; the job controller keeps retrying. Completed pods do not count toward the quota (nothing to clean up on my side).
+- 14:45 UTC (10-11) — mass failure ~14:20 UTC (GPU 'no healthy devices' + mount errors) killed q48 (e8k ep7125/8000), q53 (ep~4550/5000), q56 (ep~2000), q58-00 (nogmp ep4114), q62 (ep168), f18-00; q54-r2 died 3.7 h earlier (ep 2150-2660). Traced the near-finished ones (trace-tick14, incl. q57/q61 interim); reran q54+q56 as q63, q62 as q64, f18-00 as f20. Missed these because I only counted running pods -- now checking job failures each tick. Namespace quota: zh-* 117 pods (40 running + 77 pending), mtx2-* 40, mine 10. Screen: PARALLEL PHAT relu d32 133.2 ns untrained vs serial 209.8.
+- 17:00 UTC (10-11) — screen (untrained): parallel PHAT relu+JEDI global 109.9 ns (< JEDI+GMP 119.9!), d16 103.2, +GMP1x1 113.2, softmax+JEDI global 126.5, linear+patch-token 129.9, relu+patch-token 133.2, softmax+patch-token 146.5 (serial 209.8/236.4). Floats: parallel PHAT linear+mha 82.51/82.51, soft+mha 82.33/82.40, relu+gj+k1 82.35/82.26, soft+gj 82.25/82.23, d16 relu gj 81.62/81.59; JEDI+GMP+par linear attn K16 82.61/82.55, K64 82.66/82.62. Submitted q65: parallel PHAT QAT (relu-gj-k1, soft-gj, lin-gmha; 500k/1M; float-init, gentle).
+- 17:30 UTC (10-11) — UNTRAINED ALKAID LATENCY SCREEN, complete (initial bit widths; trained designs ran ~40 ns lower):
+  | design | ns | | design | ns |
+  | JEDI+GMP 3x3 (ref) | 119.9 | | PHAT relu SERIAL d32 | 206.5-209.8 |
+  | JEDI+GMP 1x1 | 109.9 | | PHAT softmax SERIAL d32 | 236.4 |
+  | +par relu attn K16 | 126.5 | | PHAT relu PARALLEL + JEDI global d32 | 109.9 |
+  | +par relu attn K32 | 133.2 | | ... d16 h2 | 103.2 |
+  | +par softmax attn K16 | 146.5 | | ... + GMP 1x1 | 113.2 |
+  | +par linear attn K16 / K64 | 129.9 / 133.2 | | PHAT softmax PARALLEL + JEDI global | 126.5 |
+  | GMP1x1 + par relu K16 | 126.5 | | PHAT relu / linear / softmax PARALLEL + patch-token global | 133.2 / 129.9 / 146.5 |
+  | serial PHAT/Linformer d16 relu (+lead16) | 159.8-173.2 | | | |
+- 18:30 UTC (10-11) — f20 floats: parallel PHAT relu + JEDI global 82.47/82.42 (screen 109.9 ns), + patch-token global 82.51/82.60 (133.2 ns). Submitted q66: parallel PHAT relu+JEDI global QAT 300k/500k/1M (float-init, gentle).

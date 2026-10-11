@@ -102,10 +102,13 @@ def _einsum(eq, xs, q, name=None):
     return ops.einsum(eq, *xs)
 
 
+PHAT_PARALLEL = {"on": False}  # --phat_parallel: GMP / local attention / global stage as parallel branches of one block
 ATTN_NORM = {"mode": "softmax"}  # "relu": softmax-free attention, w = relu(q.k) -- no exp / reciprocal on the latency path
 
 
 def _softmax(x, q, name=None, exp_i_max=5):
+    if ATTN_NORM["mode"] == "linear":  # no nonlinearity on the scores (linear attention)
+        return x
     if ATTN_NORM["mode"] == "relu":
         # softmax-free attention: the exp + 1/sum chain dominated PHAT's critical path (150-200 ns in alkaid);
         # relu scores keep the sparsity of attention, the normalisation is absorbed into the learned Q/K scale
@@ -332,9 +335,15 @@ def build_jedi(num_particles=64, width=64, head_widths=(64, 32, 16), n_classes=5
                 xa = x[..., :K, :]
                 qa = _qbn_dense("bnc,cC->bnC", (K, Cd), q, "jattn_q")(xa)
                 ka = _qbn_dense("bnc,cC->bnC", (K, Cd), q, "jattn_k")(xa)
-                sc = _einsum("bkc,bjc->bkj", [qa, ka], q, name="jattn_qk")
-                wa = layers.ReLU(name="jattn_relu")(sc) if attn == "relu" else _softmax(sc, q, name="jattn_softmax")
-                oa = _einsum("bkj,bjc->bkc", [wa, xa[..., :Cd]], q, name="jattn_av")
+                if attn == "linear":
+                    # linear attention, reassociated: out = Q (K^T V); K^T V is a d x d summary summed over particles (like
+                    # JEDI's mean pool), so no K x K score matrix is ever built: cheaper and shallower than relu/softmax
+                    kv = _einsum("bjc,bjd->bcd", [ka, xa[..., :Cd]], q, name="jattn_kv")
+                    oa = _einsum("bkc,bcd->bkd", [qa, kv], q, name="jattn_qkv")
+                else:
+                    sc = _einsum("bkc,bjc->bkj", [qa, ka], q, name="jattn_qk")
+                    wa = layers.ReLU(name="jattn_relu")(sc) if attn == "relu" else _softmax(sc, q, name="jattn_softmax")
+                    oa = _einsum("bkj,bjc->bkc", [wa, xa[..., :Cd]], q, name="jattn_av")
                 oa = _qbn_dense("bnc,cC->bnC", (K, W), q, "jattn_pointwise")(oa)
                 if K < N:
                     hk = QAdd(name="jattn_add")([h[..., :K, :], oa]) if q else h[..., :K, :] + oa
@@ -396,21 +405,30 @@ def build_variant(
         else:
             x = layers.Activation(pre_norm, name="embed_act")(x)
 
+    par = PHAT_PARALLEL["on"]  # fully parallel block: GMP, local attention and the global stage all read the block input
     for bi in range(n_blocks):
         S = "" if bi == 0 else f"_b{bi}"
+        msg_g, a_par = None, None
         if gmp_mode != "none":
             xin = x if gmp_channels == d_model else x[..., :gmp_channels]
             fn = gmp_grid if gmp_mode == "grid" else gmp_sep
             msg = fn(xin, eta, phi, gmp_channels, q, gmp_edges, gmp_kernel, name="gmp" + S)
             msg = _ldense("proj", d_model, q, name="gmp_pointwise" + S, per_particle=True)(msg)
-            x = x + msg
+            if par:
+                msg_g = msg
+            else:
+                x = x + msg
 
         x0 = x
+        if par:
+            assert not attn_particles or attn_particles == num_particles, "phat_parallel needs attention over all particles"
         if local_mode == "linf":  # Linformer over the leading K particles (global, no patches)
             K = attn_particles or num_particles
             xa = x if K == num_particles else x[..., :K, :]
             a = linformer_attn(xa, d_model, num_heads, linf_k, q, "local_attn" + S, attn_bits, share_qk)
-            if K < num_particles:  # residual on the leading K only; the soft tail passes through (no zeros_like: not traceable)
+            if par:
+                a_par = a
+            elif K < num_particles:  # residual on the leading K only; the soft tail passes through (no zeros_like: not traceable)
                 x = layers.Concatenate(axis=-2, name="attn_pad" + S)([x[..., :K, :] + a, x[..., K:, :]])
             else:
                 x = x + a
@@ -421,13 +439,15 @@ def build_variant(
             h4 = ops.reshape(xa, (-1, K // patch_size, patch_size, d_model))
             a = patch_mha(h4, d_model, num_heads, q, "local_attn" + S, attn_bits, share_qk)
             a = ops.reshape(a, (-1, K, d_model))
-            if K < num_particles:  # residual on the leading K only; the soft tail passes through (no zeros_like: not traceable)
+            if par:
+                a_par = a
+            elif K < num_particles:  # residual on the leading K only; the soft tail passes through (no zeros_like: not traceable)
                 x = layers.Concatenate(axis=-2, name="attn_pad" + S)([x[..., :K, :] + a, x[..., K:, :]])
             else:
                 x = x + a
 
         if global_mode != "none":
-            src = x0 if parallel_attn else x
+            src = x0 if (parallel_attn or par) else x
             h4 = ops.reshape(src, (-1, NP, patch_size, d_model))
             if q:
                 from hgq.layers import QSum
@@ -470,6 +490,10 @@ def build_variant(
                 raise ValueError(global_mode)
             if msg is not None:
                 x = x + msg
+        if par:  # sum the parallel branches: latency = slowest branch, not their sum
+            for m_ in (msg_g, a_par):
+                if m_ is not None:
+                    x = x + m_
 
         if ffn_hidden or ffn_mult:
             h = _ldense("ffn", ffn_hidden or ffn_mult * d_model, q, activation="relu", name="ffn1" + S, per_particle=True)(x)
@@ -545,6 +569,7 @@ def kw_from_args(a):
     """Model kwargs from a train_variant argparse namespace / config.json dict."""
     g = a.get if isinstance(a, dict) else (lambda k, d=None: getattr(a, k, d))
     ATTN_NORM["mode"] = g("attn_norm") or "softmax"  # older configs have no attn_norm -> softmax
+    PHAT_PARALLEL["on"] = bool(g("phat_parallel"))
     edges = g("gmp_edges")
     if isinstance(edges, str):
         edges = [float(e) for e in edges.split(",")]
