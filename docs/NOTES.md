@@ -712,3 +712,5 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
   | GMP1x1 + par relu K16 | 126.5 | | PHAT relu / linear / softmax PARALLEL + patch-token global | 133.2 / 129.9 / 146.5 |
   | serial PHAT/Linformer d16 relu (+lead16) | 159.8-173.2 | | | |
 - 18:30 UTC (10-11) — f20 floats: parallel PHAT relu + JEDI global 82.47/82.42 (screen 109.9 ns), + patch-token global 82.51/82.60 (133.2 ns). Submitted q66: parallel PHAT relu+JEDI global QAT 300k/500k/1M (float-init, gentle).
+- 19:30 UTC (10-11) — trace-tick14: q53 4x4 s1 ep1079 82.02% @ 158k LUT, 79.9 ns (= JEDI LUT, +0.21); q57 JEDI+GMP+par relu attn r32: 81.82% @ 184k / 82.15% @ 357k (93.2 ns) - attention adds nothing over per-slot JEDI+GMP in QAT either.
+- 20:30 UTC (10-11) — bit-exact: q53 4x4 s1 ep1079 82.02% @ 158k, 79.9 ns.
