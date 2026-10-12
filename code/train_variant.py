@@ -270,8 +270,12 @@ def main():
                   for f in _g.glob(os.path.join(os.path.dirname(a.resume), "pareto", "*.keras"))]
             if not pf:
                 raise
-            ep_, f_ = max(pf)
-            print(f"{a.resume} unreadable -> newest Pareto checkpoint {os.path.basename(f_)} (epoch {ep_})", flush=True)
+            import zipfile
+            ok = [(e, f) for e, f in sorted(pf, reverse=True) if zipfile.is_zipfile(f)]  # the newest one may be cut off too
+            if not ok:
+                raise
+            ep_, f_ = ok[0]
+            print(f"{a.resume} unreadable -> newest readable Pareto checkpoint {os.path.basename(f_)} (epoch {ep_})", flush=True)
             a.resume, init_epoch = f_, ep_ + 1
     if init_epoch > 0:
         # HGQ BetaPID initialises its integral term only at epoch == warmup; a run resumed past that epoch kept integral=0,
