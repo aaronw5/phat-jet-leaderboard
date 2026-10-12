@@ -15,6 +15,7 @@ Data: /j-jepa-vol/phatjet-fpga/jets_150x3_kt.npz (paper units, kt-sorted, pad at
 sliced to --n particles. Read-only; outputs only under --out.
 """
 import argparse
+import csv
 import json
 import os
 import sys
@@ -154,6 +155,7 @@ def main():
     p.add_argument("--epochs", type=int, default=300)
     p.add_argument("--batch", type=int, default=2790)
     p.add_argument("--lr", type=float, default=3e-3)
+    p.add_argument("--continue_run", action="store_true", help="resume an interrupted QAT run from its latest.weights.h5 / log.csv")
     p.add_argument("--allow_transfer_drop", action="store_true", help="continue QAT even if float->Q transfer accuracy drops (QAT may recover)")
     p.add_argument("--clipnorm", type=float, default=None, help="Adam global-norm gradient clipping (PHAT QAT diverged without it, 2026-10-09)")
     p.add_argument("--restarts", type=int, default=1)
@@ -227,6 +229,30 @@ def main():
     edges = [float(e) for e in a.gmp_edges.split(",")] if a.gmp_edges else None
     kw = kw_from_args(a)
 
+    # --continue_run: pick up an evicted QAT run where it stopped (latest.weights.h5 is written every epoch): same epoch
+    # count (so the cosine LR schedule continues), log.csv appended, beta controller seeded with the last logged beta.
+    # Nodes were evicting jobs several times a day (2026-10-11) and full reruns cost ~8 GPU-hours each.
+    init_epoch = 0
+    if getattr(a, "continue_run", False) and a.mode == "qat":
+        lw, lc = os.path.join(a.out, "latest.weights.h5"), os.path.join(a.out, "log.csv")
+        if os.path.exists(lw) and os.path.exists(lc):
+            rows = list(csv.DictReader(open(lc)))
+            if rows:
+                init_epoch = int(rows[-1]["epoch"]) + 1
+                a.resume = lw
+                try:  # an eviction can kill the pod mid-write and corrupt latest.weights.h5
+                    import h5py
+                    h5py.File(lw, "r").close()
+                except Exception:  # noqa: BLE001
+                    import glob as _g, re as _re
+                    pf = [(int(_re.search(r"epoch=(\d+)", f).group(1)), f) for f in _g.glob(os.path.join(a.out, "pareto", "*.keras"))]
+                    if pf:
+                        ep_, f_ = max(pf)
+                        a.resume, init_epoch = f_, ep_ + 1
+                        print(f"latest.weights.h5 unreadable -> newest Pareto checkpoint {os.path.basename(f_)}", flush=True)
+                if rows[-1].get("beta"):
+                    a.beta0, a.beta_warmup = float(rows[-1]["beta"]), 0
+                print(f"continuing from {lw} at epoch {init_epoch} (beta0={a.beta0:.3g})", flush=True)
     cbs = [keras.callbacks.LearningRateScheduler(cosine(a.lr, a.epochs, restarts=a.restarts)),
            keras.callbacks.CSVLogger(os.path.join(a.out, "log.csv"), append=bool(a.resume)), StopFile(a.out)]
     metrics = [acc_metric] if a.distill_alpha > 0 else ["accuracy"]
@@ -287,7 +313,7 @@ def main():
                   metrics=metrics, steps_per_execution=4)
     print(f"params {model.count_params()}  N={a.n}  train {xtr.shape}", flush=True)
     t0 = time.time()
-    h = model.fit(xtr, ytr_fit, validation_data=(xva, yva_fit), batch_size=a.batch, epochs=a.epochs, verbose=2, callbacks=cbs)
+    h = model.fit(xtr, ytr_fit, validation_data=(xva, yva_fit), batch_size=a.batch, epochs=a.epochs, verbose=2, callbacks=cbs, initial_epoch=init_epoch)
     hist = {k: [float(v) for v in vs] for k, vs in h.history.items()}
     hist["minutes"] = (time.time() - t0) / 60
     json.dump(hist, open(os.path.join(a.out, "hist.json"), "w"))
