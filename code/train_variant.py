@@ -144,6 +144,9 @@ def main():
     p.add_argument("--arch", default="phat", choices=["phat", "jedi"], help="jedi: JEDI-linear gnn backbone (+ GMP if --gmp grid)")
     p.add_argument("--jedi_width", type=int, default=64)
     p.add_argument("--jedi_rounds", type=int, default=1, help="JEDI interaction rounds (2 = deeper, uses latency headroom)")
+    p.add_argument("--jedi_global", default="mean", choices=["mean", "none", "patch_mix", "patch_attn"], help="JEDI global term: mean (JEDI-linear), none, or PHAT-style patch hierarchy")
+    p.add_argument("--jedi_patch", type=int, default=8)
+    p.add_argument("--jedi_gheads", type=int, default=2)
     p.add_argument("--jedi_attn", default="none", choices=["none", "relu", "softmax", "linear"], help="parallel sparse attention branch in the JEDI arch")
     p.add_argument("--jedi_attn_k", type=int, default=16, help="leading particles that attend")
     p.add_argument("--jedi_attn_d", type=int, default=16, help="attention dim / value channels")
@@ -155,6 +158,7 @@ def main():
     p.add_argument("--epochs", type=int, default=300)
     p.add_argument("--batch", type=int, default=2790)
     p.add_argument("--lr", type=float, default=3e-3)
+    p.add_argument("--initial_epoch", type=int, default=0, help="epoch to resume at (with --resume <ckpt>); lr warms up from 1% over 15 epochs")
     p.add_argument("--continue_run", action="store_true", help="resume an interrupted QAT run from its latest.weights.h5 / log.csv")
     p.add_argument("--allow_transfer_drop", action="store_true", help="continue QAT even if float->Q transfer accuracy drops (QAT may recover)")
     p.add_argument("--clipnorm", type=float, default=None, help="Adam global-norm gradient clipping (PHAT QAT diverged without it, 2026-10-09)")
@@ -253,7 +257,35 @@ def main():
                 if rows[-1].get("beta"):
                     a.beta0, a.beta_warmup = float(rows[-1]["beta"]), 0
                 print(f"continuing from {lw} at epoch {init_epoch} (beta0={a.beta0:.3g})", flush=True)
-    cbs = [keras.callbacks.LearningRateScheduler(cosine(a.lr, a.epochs, restarts=a.restarts)),
+    if a.initial_epoch:
+        init_epoch = a.initial_epoch
+    if a.resume and a.resume.endswith(".h5"):
+        # evictions kill pods mid-write: an unreadable latest.weights.h5 falls back to the run's newest Pareto checkpoint
+        try:
+            import h5py
+            h5py.File(a.resume, "r").close()
+        except Exception:  # noqa: BLE001
+            import glob as _g, re as _re
+            pf = [(int(_re.search(r"epoch=(\d+)", f).group(1)), f)
+                  for f in _g.glob(os.path.join(os.path.dirname(a.resume), "pareto", "*.keras"))]
+            if not pf:
+                raise
+            ep_, f_ = max(pf)
+            print(f"{a.resume} unreadable -> newest Pareto checkpoint {os.path.basename(f_)} (epoch {ep_})", flush=True)
+            a.resume, init_epoch = f_, ep_ + 1
+    if init_epoch > 0:
+        # HGQ BetaPID initialises its integral term only at epoch == warmup; a run resumed past that epoch kept integral=0,
+        # computed beta ~1 and clamped to beta_max (3e-5) -> loss ~5, bits crushed, collapse (2026-10-12). Put the warmup
+        # at the resume epoch so the integral is matched to beta0 (pass the run's beta at the checkpoint, ~1e-7).
+        a.beta_warmup = init_epoch
+    # resuming without the optimizer state: Adam's moments restart at zero, so every parameter (incl. the learned bit
+    # widths) moves a full lr-sized step at once -> resumed runs collapsed to ~0 EBOPs / chance accuracy within ~100 epochs
+    # (2026-10-12). Ramp the lr from 1% over 15 epochs so Adam re-estimates its moments first.
+    sched = cosine(a.lr, a.epochs, restarts=a.restarts)
+    if init_epoch > 0:
+        base, e0 = sched, init_epoch
+        sched = lambda ep, lr=None, base=base, e0=e0: base(ep) * min(1.0, 0.01 + (ep - e0) / 15.0)
+    cbs = [keras.callbacks.LearningRateScheduler(sched),
            keras.callbacks.CSVLogger(os.path.join(a.out, "log.csv"), append=bool(a.resume)), StopFile(a.out)]
     metrics = [acc_metric] if a.distill_alpha > 0 else ["accuracy"]
     mname = "acc_metric" if a.distill_alpha > 0 else "accuracy"
@@ -303,6 +335,8 @@ def main():
                                fname_format="epoch={epoch}-val_acc={val_%s:.4f}-ebops={ebops}.keras" % mname,
                                enable_if=lambda x: x[f"val_{mname}"] > 0.6))
         cbs.append(keras.callbacks.ModelCheckpoint(os.path.join(a.out, "latest.weights.h5"), save_weights_only=True))
+        csvl = [c for c in cbs if isinstance(c, keras.callbacks.CSVLogger)]
+        cbs = [c for c in cbs if not isinstance(c, keras.callbacks.CSVLogger)] + csvl  # log after BetaPID sets logs["beta"]
 
     if a.w_l1 > 0:
         for l in model.layers:

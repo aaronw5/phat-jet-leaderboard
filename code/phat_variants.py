@@ -286,7 +286,7 @@ def _qbn_dense(eq, shape, q, name, activation=None, bias_axes="C"):
 
 def build_jedi(num_particles=64, width=64, head_widths=(64, 32, 16), n_classes=5, quantized=False, uq1=True,
                gmp_mode="none", gmp_edges=None, gmp_bins=8, gmp_bounds=1.6, gmp_kernel=3, gmp_channels=16, name=None,
-               n_feat=3, rounds=1, attn="none", attn_k=16, attn_d=16):
+               n_feat=3, rounds=1, attn="none", attn_k=16, attn_d=16, jglobal="mean", jpatch=8, jheads=2):
     """JEDI-linear 'gnn' backbone (github.com/calad0i/JEDI-linear src/model.py get_gnn), optionally with a PHAT-JeT
     GMP message. Per particle: phi1 = MLP(x); interaction s = MLP(phi1), d = MLP(mean_n phi1), h = s + d (+ GMP msg);
     h = MLP(h); sum-pool; head MLP. uq1=True shares data-lane bit-widths across the particle axis (permutation-
@@ -312,12 +312,35 @@ def build_jedi(num_particles=64, width=64, head_widths=(64, 32, 16), n_classes=5
         for r in range(rounds):  # rounds>1: repeat the interaction (latency headroom); r=0 keeps the original layer names
             R = "" if r == 0 else f"_r{r + 1}"
             s_ = _qbn_dense("bnc,cC->bnC", (N, W), q, "interact_self" + R, activation="relu")(x)
-            if q:
-                m = QSum(axes=1, scale=2.0 ** -round(log2(N)), keepdims=True, name="interact_pool" + R)(x)
+            if jglobal == "mean":  # JEDI-linear global: mean over all particles
+                if q:
+                    m = QSum(axes=1, scale=2.0 ** -round(log2(N)), keepdims=True, name="interact_pool" + R)(x)
+                else:
+                    m = ops.sum(x, axis=1, keepdims=True) * 2.0 ** -round(log2(N))
+                d_ = _qbn_dense("bnc,cC->bnC", (1, W), q, "interact_global" + R, activation="relu")(m)
+                h = QAdd(name="interact_add" + R)([s_, d_]) if q else s_ + d_
+            elif jglobal == "none":  # no global term: particles only meet through GMP (if any) and the final sum
+                h = s_
             else:
-                m = ops.sum(x, axis=1, keepdims=True) * 2.0 ** -round(log2(N))
-            d_ = _qbn_dense("bnc,cC->bnC", (1, W), q, "interact_global" + R, activation="relu")(m)
-            h = QAdd(name="interact_add" + R)([s_, d_]) if q else s_ + d_
+                # PHAT-style hierarchical global instead of the JEDI mean: pT-ordered patches of `jpatch` particles are
+                # pooled to tokens, reduced to 16 ch, mixed across patches (dense mixer or patch-token attention), projected
+                # back to W and broadcast to each patch's particles.
+                P = jpatch
+                NPt = N // P
+                h4 = ops.reshape(x, (-1, NPt, P, W))
+                tok = QSum(axes=2, scale=1.0 / P, name="jpatch_tokens" + R)(h4) if q else ops.sum(h4, axis=2) * (1.0 / P)
+                tok = _qbn_dense("bnc,cC->bnC", (NPt, 16), q, "jpatch_reduce" + R, activation="relu")(tok)
+                if jglobal == "patch_mix":
+                    flat = ops.reshape(tok, (-1, NPt * 16))
+                    flat = _qbn_dense("bc,cC->bC", NPt * 16, q, "jpatch_mix" + R, activation="relu")(flat)
+                    tok = ops.reshape(flat, (-1, NPt, 16))
+                elif jglobal == "patch_attn":
+                    tok = token_mha(tok, 16, jheads, q, "jpatch_attn" + R)
+                else:
+                    raise ValueError(jglobal)
+                g = _qbn_dense("bnc,cC->bnC", (NPt, W), q, "jpatch_global" + R, activation="relu")(tok)
+                g = ops.repeat(g, P, axis=1)
+                h = QAdd(name="interact_add" + R)([s_, g]) if q else s_ + g
             if gmp_mode == "grid" and r == 0:
                 if gmp_edges is None:
                     gmp_edges = _np.linspace(-gmp_bounds, gmp_bounds, gmp_bins + 1).tolist()
@@ -373,13 +396,14 @@ def build_variant(
     parallel_attn=False, attn_particles=None, share_qk=False, use_head1=True, linf_k=4, unshared=False,
     ffn_hidden=None, mix_hidden=None, n_blocks=1, lut_layers=None, lut_dhl=8, name=None,
     arch="phat", jedi_width=64, jedi_uq1=True, jedi_head=(64, 32, 16), n_feat=3, jedi_rounds=1,
-    jedi_attn="none", jedi_attn_k=16, jedi_attn_d=16,
+    jedi_attn="none", jedi_attn_k=16, jedi_attn_d=16, jedi_global="mean", jedi_patch=8, jedi_gheads=2,
 ):
     if arch == "jedi":
         return build_jedi(num_particles=num_particles, width=jedi_width, head_widths=jedi_head, n_classes=n_classes,
                           quantized=quantized, uq1=jedi_uq1, gmp_mode=gmp_mode, gmp_edges=gmp_edges, gmp_bins=gmp_bins,
                           gmp_bounds=gmp_bounds, gmp_kernel=gmp_kernel, gmp_channels=gmp_channels or 16, name=name,
-                          n_feat=n_feat, rounds=jedi_rounds, attn=jedi_attn, attn_k=jedi_attn_k, attn_d=jedi_attn_d)
+                          n_feat=n_feat, rounds=jedi_rounds, attn=jedi_attn, attn_k=jedi_attn_k, attn_d=jedi_attn_d,
+                          jglobal=jedi_global, jpatch=jedi_patch, jheads=jedi_gheads)
     UNSHARED["on"] = bool(unshared)
     LUT["roles"] = set((lut_layers or "").split(",")) - {""}
     LUT["d_hl"] = lut_dhl
@@ -585,7 +609,8 @@ def kw_from_args(a):
                 arch=g("arch") or "phat", jedi_width=g("jedi_width") or 64, jedi_uq1=not g("jedi_per_slot_bits"),
                 jedi_head=tuple(int(v) for v in (g("jedi_head") or "64,32,16").split(",")),
                 n_feat=int(g("features") or 3), jedi_rounds=int(g("jedi_rounds") or 1),
-                jedi_attn=g("jedi_attn") or "none", jedi_attn_k=int(g("jedi_attn_k") or 16), jedi_attn_d=int(g("jedi_attn_d") or 16))
+                jedi_attn=g("jedi_attn") or "none", jedi_attn_k=int(g("jedi_attn_k") or 16), jedi_attn_d=int(g("jedi_attn_d") or 16),
+                jedi_global=g("jedi_global") or "mean", jedi_patch=int(g("jedi_patch") or 8), jedi_gheads=int(g("jedi_gheads") or 2))
 
 
 GMP_OH_FIX = {"on": True}
