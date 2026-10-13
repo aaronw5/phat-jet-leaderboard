@@ -757,3 +757,5 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
 - q87: t70k at 88k EBOPs but L0.48 (drifting up); t95k 120k L0.35; pattn t120k 170k, t180k 230k healthy.
 - 15:14Z trace-tick23 traced q86 (Alkaid pending): perm-inv 81.33%@149k, 81.05%@146k, 81.42%@179k, 81.89%@220k, 81.71%@210k LUT. Still ~0.5pt short of JEDI perm-inv 81.81%@158k; frontier roughly unchanged vs q78.
 - 16:15Z Alkaid q86: all in envelope — 81.33%@149k 63.3ns, 81.05%@146k 66.6ns, 81.42%@179k 69.9ns, 81.89%@220k 73.3ns. Perm-inv frontier unchanged (JEDI 81.81%@158k still ahead at equal LUT; we win latency). q87 t70k degrading (L0.53, 80k EBOPs).
+- 17:21Z q87 near targets (pattn t180k 177k, t120k 131k, t95k 90k, t70k 67k; losses 0.42–0.58) -> launched trace-tick24 (min_acc 0.80).
+- 18:22Z trace-tick24 q87 (pre-final): t95k ep2351 80.44%@69.9k LUT 56.6ns; t70k ep1456 80.28%@76.8k 63.3ns; pattn t120k ep2277 80.13%@82k 59.9ns; t70k ep1123 81.17%@108k 66.6ns; pattn t120k ep1785 81.15%@101k 69.9ns. JEDI pT-sorted 80.94%@70.7k not yet beaten (-0.5pt at equal LUT). Runs continue to ep5000; accuracy usually recovers once EBOPs plateau -> retrace at end.
