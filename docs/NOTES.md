@@ -751,3 +751,9 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
 - 06:00 UTC (10-13) — cancelled q84 (GENTLE perm-inv worse). Submitted q86 perm-inv default settings at t210k/t230k (16/32 ch). trace-tick21 on finished patch-attn softmax + perm-inv q82 runs.
 - 06:50 UTC (10-13) — perm-inv FINAL frontier (shared bits): 81.40% @ 155k 63.3 ns (g4h2 t250k ep4062), 81.51% @ 165k, 81.63% @ 198k, 81.98% @ 195k (66.6 ns). Gap to JEDI perm-inv at equal LUT ~0.4 pt; per-slot is what buys the extra. q86 (t210k/t230k) started.
 - 08:30 UTC (10-13) — trace-tick22: patch-attn relu FINAL 80.41% @ 79k LUT, 59.9 ns (per-slot, pT-sorted); softmax 79.63% @ 73k. Low LUT/EBOP (79k LUT from 142k EBOPs). Fair comparison is JEDI-linear's pT-sorted model (80.94% @ 70.7k) — not beaten yet. Perm-inv g4c32h2 t250k final 81.11% @ 156k 63.3 ns. Submitted q87: small-design region — per-slot winner at t70k/t95k, patch-attn relu at t120k/t180k (fresh).
+
+## 2026-10-13T14:23Z tick
+- q86 perm-inv at ep 2400–2530, EBOPs 201–261k; t230k losses rising (0.41/0.47), g4c32 t210k val dip 0.28 at L0.37 -> collapse risk. Launched trace-tick23 (q86 mid-run, --min_acc 0.81, Alkaid).
+- q87: t70k at 88k EBOPs but L0.48 (drifting up); t95k 120k L0.35; pattn t120k 170k, t180k 230k healthy.
+- 15:14Z trace-tick23 traced q86 (Alkaid pending): perm-inv 81.33%@149k, 81.05%@146k, 81.42%@179k, 81.89%@220k, 81.71%@210k LUT. Still ~0.5pt short of JEDI perm-inv 81.81%@158k; frontier roughly unchanged vs q78.
+- 16:15Z Alkaid q86: all in envelope — 81.33%@149k 63.3ns, 81.05%@146k 66.6ns, 81.42%@179k 69.9ns, 81.89%@220k 73.3ns. Perm-inv frontier unchanged (JEDI 81.81%@158k still ahead at equal LUT; we win latency). q87 t70k degrading (L0.53, 80k EBOPs).
