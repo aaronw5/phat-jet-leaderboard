@@ -257,7 +257,7 @@ def main():
                 if rows[-1].get("beta"):
                     a.beta0, a.beta_warmup = float(rows[-1]["beta"]), 0
                 print(f"continuing from {lw} at epoch {init_epoch} (beta0={a.beta0:.3g})", flush=True)
-    if a.initial_epoch:
+    if a.initial_epoch and not init_epoch:  # a continued warm-start run keeps its own epoch, not the warm-start's
         init_epoch = a.initial_epoch
     if a.resume and a.resume.endswith(".h5"):
         # evictions kill pods mid-write: an unreadable latest.weights.h5 falls back to the run's newest Pareto checkpoint

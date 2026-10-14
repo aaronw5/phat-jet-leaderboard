@@ -803,3 +803,16 @@ All kT designs out of envelope (>100 ns) with ~220–280k LUT incl. sorter; no a
 - ws72-psok-t75k ep3207: 80.00% @ 69.0k, 59.9 ns.
 - ws82-pi-t165k ep2287: 81.38% @ 131k, 63.3 ns; ep4823: 80.02% @ 95.8k, 56.6 ns. Perm-inv bar (81.81% @ 158k) not beaten.
 - trace-tick28 OOM'd at 16Gi on the ws82 perm-inv traces; rerun at 32Gi worked.
+- q91 launched (4 runs, 1 GPU): 3rd-round warm start from q88 ws72-t100k ep4983 (80.97% @ 75.0k): hot t80k/t90k/t100k (init 1649), cold t90k (init 3500); beta0 1.263e-06.
+- 10-14 ~07:50 UTC: node NotReady evicted q89 + q91. q89 NOT resumed (kT line closed). Bug found: train_variant's
+  `--initial_epoch` overrode the epoch recovered by `--continue_run`, so evicted warm-start runs would restart their schedule
+  at 1649. Fixed (initial_epoch only applies when not continuing); q91 resumed as q91-00r2.
+- q90 near end: ws88a-cold-t70k final 80.06% @ 90k EBOPs; ws88a-hot-t70k and ws88b-hot-t60k collapsed (~65%) below ~45k EBOPs;
+  ws72-t85k e4016 79.8% @ 94k. Hot re-heat to <70k EBOPs is too aggressive.
+- q90 done: ws72-t85k 80.08% @ 86k EBOPs, ws88a-cold 80.06% @ 90k; hot <70k runs collapsed. trace-tick29 launched.
+- q92 launched (4 runs): repeat q88 path (from _W72, hot 1649) at t90k/t95k × seeds 0,1 — aiming ~65-70k LUT at ~81%.
+
+### q90 final (tick29, Alkaid)
+- ws88a-cold-t70k ep4196: 80.58% @ 72.1k LUT, 56.6 ns; ep4959: 79.97% @ 64.3k, 56.6 ns.
+- ws72-t85k ep4983: 79.93% @ **51.8k LUT, 53.3 ns** (cheapest ~80% point so far); ep2230: 81.30% @ 101k, 63.3 ns.
+- pT-sorted frontier now: 80.97@75.0k, 80.58@72.1k, 79.97@64.3k, 79.93@51.8k. JEDI pT bar 80.94@70.7k still not beaten (~0.4% short at equal LUT).
