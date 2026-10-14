@@ -782,3 +782,24 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
 - 02:37Z q87 all FINAL; trace-tick26 = q87 final + q88 mid-run (ws72 at 92k/130k, ws82 at 173k/190k EBOPs). q89 kT ~ep920, 207–318k EBOPs, best val 82.2–82.3 (same as pT so far).
 - 03:38Z trace-tick26 (da4ml LUT; Alkaid pending): **warm-start re-compression beats from-scratch at small size**: q88 ws72-psok-t100k ep3396 81.20%@91.4k LUT, ws72-t75k ep2448 80.90%@94.6k (vs from-scratch q87 81.17%@108k / 81.15%@101k). Perm-inv ws82-t165k ep2298 81.48%@148k (prior perm-inv 81.33%@149k), ws82-t140k ep2007 81.62%@174k. JEDI bars (80.94%@70.7k pT-sorted; 81.81%@158k perm-inv) still not met. q87 final: no new points (late epochs 80.0–80.4% @ 66–98k).
 - 04:29Z Alkaid tick26: ws72-t100k ep3396 81.20%@91.4k **56.6 ns**; ws72-t75k ep2448 80.90%@94.6k 63.3 ns; ws82-pi-t165k ep2298 81.48%@148k 66.6 ns; ws82-pi-t140k ep2007 81.62%@174k 63.3 ns. All in envelope.
+- 04:32Z q90 launched: 2nd-round warm start from q88 ws72-t100k ep3396 (81.20%@91k) -> t70k hot (sched@1649) / cold (sched@3397); ws72-t75k ep2448 -> t60k hot; q72 winner -> t85k. Goal: JEDI pT-sorted 80.94%@70.7k.
+
+### q89 kT interim trace (tick27, 10-14 ~04:15 UTC), model-only da4ml LUT; sorter (N=64: 105k LUT, 70.6 ns crit) NOT yet added
+| run | ep | acc | model LUT | model lat (est) | + sorter LUT |
+|---|---|---|---|---|---|
+| kt g4c32h2 t130k | 2097 | 79.99 | 92.8k | 33.3 | 198k |
+| kt g4c32h2 t130k | 1451 | 81.33 | 116.6k | 36.6 | 222k |
+| kt g4c32h2 t180k | 1284 | 81.96 | 173.6k | 36.6 | 279k |
+| kt g4h2 t150k | 1219 | 81.59 | 157.8k | 36.6 | 263k |
+| kt g4h2 t95k | 1043 | 81.45 | 124.7k | 36.6 | 230k |
+Model-only, kT ≈ pT-sorted at equal LUT (pT: 81.20% @ 91.4k q88, 81.17% @ 108k q87) — no accuracy gain from kT order,
+and with the sorter added every point is >190k LUT and ~110+ ns. Verdict: kT ordering not worth it for this family.
+Alkaid (tick27): kT model-only crit 57–75 ns (66.6–83.3 ns). Total = ceil((crit_model+70.56)/3.0)×3.33:
+t95k e1043 81.45% → 146.5 ns; t130k e1451 81.33% → 146.5 ns; t150k e1219 81.59% → 149.8 ns; t180k e1284 81.97% → 153.2 ns.
+All kT designs out of envelope (>100 ns) with ~220–280k LUT incl. sorter; no accuracy gain vs pT. kT line closed.
+
+### q88 final (tick28/28b, Alkaid)
+- ws72-psok-t100k ep4983: **80.97% @ 75.0k LUT, 63.3 ns** — closest yet to JEDI pT-sorted (80.94% @ 70.7k); +6% LUT, not beaten.
+- ws72-psok-t75k ep3207: 80.00% @ 69.0k, 59.9 ns.
+- ws82-pi-t165k ep2287: 81.38% @ 131k, 63.3 ns; ep4823: 80.02% @ 95.8k, 56.6 ns. Perm-inv bar (81.81% @ 158k) not beaten.
+- trace-tick28 OOM'd at 16Gi on the ws82 perm-inv traces; rerun at 32Gi worked.
