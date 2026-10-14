@@ -816,3 +816,8 @@ All kT designs out of envelope (>100 ns) with ~220–280k LUT incl. sorter; no a
 - ws88a-cold-t70k ep4196: 80.58% @ 72.1k LUT, 56.6 ns; ep4959: 79.97% @ 64.3k, 56.6 ns.
 - ws72-t85k ep4983: 79.93% @ **51.8k LUT, 53.3 ns** (cheapest ~80% point so far); ep2230: 81.30% @ 101k, 63.3 ns.
 - pT-sorted frontier now: 80.97@75.0k, 80.58@72.1k, 79.97@64.3k, 79.93@51.8k. JEDI pT bar 80.94@70.7k still not beaten (~0.4% short at equal LUT).
+- q91: cold-t90k finished 80.72% best @ 92k EBOPs (traced in tick30). 3rd-round HOT re-heats collapsed (71–79%) -> job cancelled
+  at ~ep3160. Lesson: re-heating an already-compressed ckpt to epoch 1649 destroys it; cold restarts hold.
+- q93 launched: cold warm starts from q88 ep4983 (init 3500/4000) at t70–80k.
+- q91 cold-t90k Alkaid: ep4791 **80.68% @ 65.2k LUT, 56.6 ns**; ep3649 80.82% @ 74.0k; ep4804 80.16% @ 62.5k, 53.3 ns.
+  vs JEDI pT 80.94% @ 70.7k: −0.26% acc at −8% LUT — still not dominating. Verilator (verilator-tick30) on q88 ep4983 + q91 ep4791.
