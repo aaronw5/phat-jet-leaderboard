@@ -759,3 +759,26 @@ with lower latency (43 vs 61 ns) but 2.4× the LUTs. Verilator on the final mode
 - 16:15Z Alkaid q86: all in envelope — 81.33%@149k 63.3ns, 81.05%@146k 66.6ns, 81.42%@179k 69.9ns, 81.89%@220k 73.3ns. Perm-inv frontier unchanged (JEDI 81.81%@158k still ahead at equal LUT; we win latency). q87 t70k degrading (L0.53, 80k EBOPs).
 - 17:21Z q87 near targets (pattn t180k 177k, t120k 131k, t95k 90k, t70k 67k; losses 0.42–0.58) -> launched trace-tick24 (min_acc 0.80).
 - 18:22Z trace-tick24 q87 (pre-final): t95k ep2351 80.44%@69.9k LUT 56.6ns; t70k ep1456 80.28%@76.8k 63.3ns; pattn t120k ep2277 80.13%@82k 59.9ns; t70k ep1123 81.17%@108k 66.6ns; pattn t120k ep1785 81.15%@101k 69.9ns. JEDI pT-sorted 80.94%@70.7k not yet beaten (-0.5pt at equal LUT). Runs continue to ep5000; accuracy usually recovers once EBOPs plateau -> retrace at end.
+- 20:29Z q88 launched: warm-start re-compression from best ckpts (instead of compressing from scratch to a small target). per-slot q72 winner ep1648 -> t75k/t100k (target: beat JEDI pT-sorted 80.94%@70.7k LUT); perm-inv q82 ep1664 -> t140k/t165k (target: JEDI perm-inv 81.81%@158k). Resumes at the ckpt epoch on the original 5000-ep cosine schedule, beta0 = beta at ckpt.
+
+## 2026-10-13T23:00Z — kT-sorted inputs (user: "have u tried any kt sorted ones? ... put kt sorting time into latency")
+- History: early PHAT-JeT runs used jets_150x3_kt.npz (kT order; float N=32 kT 79.3 vs pT 79.0). Every JEDI-backbone /
+  hls4ml-input run (all current bests) is pT-sorted — that pipeline only supported pT. No per-slot kT run existed.
+- Added `--sort kt` for hls4ml inputs: the leading-64 pT candidates re-ordered by the firmware sorter's integer key
+  ptk=min(floor(pT),1023), key = ptk^2 (|floor(deta*128)|^2 + |floor(dphi*128)|^2) ~ kT^2, ties -> pT rank. Changes the
+  order in 99.995% of jets. Only per-slot-bit models can exploit it (shared-bit models are order-free).
+- Sorter hardware: standalone/kt_sorter_alkaid.py — Batcher odd-even merge network on 64 x (pT u16, deta/dphi s11) with
+  the key built shift-and-add (Alkaid 0.8.1 gives var*var products negative latency). Traced sorter is bit-exact vs the
+  numpy key (2000 random jets, ties included). N=8: 33.3 ns (key 13.6 ns). N=32/64 Alkaid running (cpu job ktsort).
+  Latency of a kT design = ceil((crit_sorter + crit_model)/3.0) x 3.33 ns; LUT = sorter + model.
+- q89 launched: winner recipe kT t180k/t130k, 4x4-GMP per-slot kT t150k/t95k.
+- 23:32Z **kT sorter Alkaid (Batcher, key built shift-add, bit-exact):** N=32 kT 54.8 ns crit -> 63.3 ns, 42.7k LUT;
+  **N=64 kT 70.6 ns crit -> 79.9 ns, 105k LUT** (key 15.2 ns; the 21-layer network on a 41-b key is the rest). Reference
+  pT-key re-sort N=64: 46.6 ns, 37k LUT. Total for a kT design = sorter + model: winner model crit ~61 ns -> ~131 ns crit =
+  ~147 ns, smallest per-slot (56.6 ns) -> ~137 ns. **kT at N=64 is out of the 100 ns envelope with this sorter** (even a
+  pT-width key network is 41 ns). q89 kept running only to measure what kT order is worth in accuracy; if large, a
+  cheaper sorter (narrow/log key, partial top-K sort, 2 layers/clock) is the follow-up. q86 final -> trace-tick25.
+- 00:35Z q86 FINAL traced: late (compressed) epochs fall to 80.0–80.5% @ 121–147k LUT; best points stay mid-run (81.33%@149k 63.3ns, 81.64%@192k 69.9ns, 81.89%@220k). Perm-inv frontier unchanged; q86 closed.
+- 02:37Z q87 all FINAL; trace-tick26 = q87 final + q88 mid-run (ws72 at 92k/130k, ws82 at 173k/190k EBOPs). q89 kT ~ep920, 207–318k EBOPs, best val 82.2–82.3 (same as pT so far).
+- 03:38Z trace-tick26 (da4ml LUT; Alkaid pending): **warm-start re-compression beats from-scratch at small size**: q88 ws72-psok-t100k ep3396 81.20%@91.4k LUT, ws72-t75k ep2448 80.90%@94.6k (vs from-scratch q87 81.17%@108k / 81.15%@101k). Perm-inv ws82-t165k ep2298 81.48%@148k (prior perm-inv 81.33%@149k), ws82-t140k ep2007 81.62%@174k. JEDI bars (80.94%@70.7k pT-sorted; 81.81%@158k perm-inv) still not met. q87 final: no new points (late epochs 80.0–80.4% @ 66–98k).
+- 04:29Z Alkaid tick26: ws72-t100k ep3396 81.20%@91.4k **56.6 ns**; ws72-t75k ep2448 80.90%@94.6k 63.3 ns; ws82-pi-t165k ep2298 81.48%@148k 66.6 ns; ws82-pi-t140k ep2007 81.62%@174k 63.3 ns. All in envelope.

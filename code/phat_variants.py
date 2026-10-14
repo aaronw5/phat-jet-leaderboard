@@ -697,13 +697,22 @@ def use_data(cfg_or_name):
 def load_split(split, n, sort="kt"):
     """x_train/y_train (620k) or x_val/y_val (260k held-out test) sliced to the leading n particles."""
     if DATA_SRC["name"] == "hls4ml":
-        assert sort == "pt", "hls4ml inputs come in native pT order; use --sort pt"
+        # 'pt' = native order (what CTL2 delivers); 'kt' = the same leading-n pT particles re-ordered by kT = pT*dR
+        # (descending), i.e. a firmware sorter on the n candidates in front of the model (its latency/LUTs count too)
+        assert sort in ("pt", "kt") and (sort == "pt" or DATA_SRC["features"] == 3), sort
         d = _np.load(DATA_HLS4ML)
         cols = [5, 8, 11] if DATA_SRC["features"] == 3 else list(range(16))  # 16 = privileged-teacher inputs (training only)
         xtr = d["x_train"][:, :n, cols].astype(_np.float32)
-        shift, scale = xtr.mean(axis=(0, 1), keepdims=True), xtr.std(axis=(0, 1), keepdims=True)
+        shift, scale = xtr.mean(axis=(0, 1), keepdims=True), xtr.std(axis=(0, 1), keepdims=True)  # permutation-free
         x = xtr if split == "train" else d["x_test"][:, :n, cols].astype(_np.float32)
         del xtr
+        if sort == "kt":  # the firmware sorter's integer key (standalone/kt_sorter_alkaid.py, bit-exact vs its trace):
+            # ptk = min(floor(pT/GeV), 1023), d = |floor(deta*128)|, |floor(dphi*128)|, key = ptk^2 (de^2 + dp^2) ~ kT^2;
+            # descending, ties -> pT rank (stable); padding (pT=0) keeps key 0 and stays at the end
+            ptk = _np.minimum(_np.floor(x[..., 0]), 1023).astype(_np.int64)
+            dek, dpk = (_np.abs(_np.floor(x[..., c] * 128)).astype(_np.int64) for c in (1, 2))
+            idx = _np.argsort(-(ptk ** 2 * (dek ** 2 + dpk ** 2)), axis=1, kind="stable")
+            x = _np.take_along_axis(x, idx[:, :, None], axis=1)
         x = (x - shift) / scale
         y = _np.eye(5, dtype=_np.float32)[d["y_train" if split == "train" else "y_test"].astype(int)]
         return x, y
