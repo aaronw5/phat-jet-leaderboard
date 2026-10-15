@@ -841,3 +841,8 @@ All kT designs out of envelope (>100 ns) with ~220–280k LUT incl. sorter; no a
 - cold4000-t92k ep4617 **80.72% @ 62.6k, 56.6 ns**; ep4949 80.63% @ 60.0k. cold4000-t88k ep4925 80.59% @ 60.8k, 53.3 ns.
   cold4500-t85k ep4926 80.71% @ 62.9k. Curve up ~0.15% vs q91/q93; interpolated ~80.86% @ 70.7k vs JEDI 80.94%.
 - q95 launched: 5th-round cold from q94 ep4617/ep4925 + q88 ep4983 polished at t100k (init 4500).
+- q94 cold3500-t90k (tick35): ep3635 80.71% @ 60.1k, 59.9 ns (best ~60k point); ep4760 79.96% @ 58.0k.
+- q95 (tick36): ws88f-cold4500-t100k ep4504 81.03% @ 75.9k, 59.9 ns; ep4818 80.70% @ 72.8k. ws94a-cold4500-t95k ep4701 80.64% @ 60.0k.
+  5th cold round ~flat vs 4th (plateau). Remaining two q95 runs traced in tick37.
+- q95 cold4000 runs (tick37): ws94a ep4313 80.64% @ 60.9k, 53.3 ns; ws94b ≤80.37%. Cold-round line plateaued at ~80.7% @ 60k / ~81.0% @ 75k.
+- q96 launched: best two cold recipes (q94 ws91-cold4000-t92k, q93 ws88f-cold3500-t75k) with seeds 1,2 — seed lottery for the last ~0.1%.
