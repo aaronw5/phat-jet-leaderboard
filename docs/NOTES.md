@@ -834,3 +834,10 @@ All kT designs out of envelope (>100 ns) with ~220–280k LUT incl. sorter; no a
 - q94 launched (no 2080 Ti): 4th-round cold from q91 ep4791 (init 3500/4000/4500, t85–92k).
 - q93 cold3500 (tick32): t75k ep4192 **80.51% @ 61.5k, 53.3 ns**; ep3504 80.92% @ 73.8k, 56.6 ns; t80k ep4976 80.22% @ 57.5k, 56.6 ns.
   pT frontier: 80.97@75.0k, 80.92@73.8k, 80.68@65.2k, 80.51@61.5k, 80.22@57.5k, 79.93@51.8k. JEDI pT 80.94@70.7k still ~0.3% above our curve.
+- q92 (tick33): t95k s0 ep4653 80.53% @ 60.4k, 56.6 ns (marginal new frontier point); t90k s1 ep3886 80.29% @ 60.2k;
+  t95k s0 ep2710 81.40% @ 91.7k, 59.9 ns. Seed spread ~0.3% at equal size. Still below JEDI pT line.
+
+### q94 (4th-round cold from q91 ep4791), Alkaid tick34
+- cold4000-t92k ep4617 **80.72% @ 62.6k, 56.6 ns**; ep4949 80.63% @ 60.0k. cold4000-t88k ep4925 80.59% @ 60.8k, 53.3 ns.
+  cold4500-t85k ep4926 80.71% @ 62.9k. Curve up ~0.15% vs q91/q93; interpolated ~80.86% @ 70.7k vs JEDI 80.94%.
+- q95 launched: 5th-round cold from q94 ep4617/ep4925 + q88 ep4983 polished at t100k (init 4500).
