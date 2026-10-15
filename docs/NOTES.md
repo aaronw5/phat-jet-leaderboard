@@ -821,3 +821,16 @@ All kT designs out of envelope (>100 ns) with ~220–280k LUT incl. sorter; no a
 - q93 launched: cold warm starts from q88 ep4983 (init 3500/4000) at t70–80k.
 - q91 cold-t90k Alkaid: ep4791 **80.68% @ 65.2k LUT, 56.6 ns**; ep3649 80.82% @ 74.0k; ep4804 80.16% @ 62.5k, 53.3 ns.
   vs JEDI pT 80.94% @ 70.7k: −0.26% acc at −8% LUT — still not dominating. Verilator (verilator-tick30) on q88 ep4983 + q91 ep4791.
+- Verilator (verilator-tick30): q88 ws72-t100k ep4983 (80.97%) and q91 cold-t90k ep4791 (80.68%) both bit-exact on 512 jets
+  (max|err|=0, argmax match 1.0). Verilog in verilog/q88_ws72... and verilog/q91_ws88f_cold...
+- 10-14 ~20:53 UTC: q93 evicted (node taint) then r1 died on an RTX 2080 Ti: all 4 packed runs killed together during cuDNN
+  autotune of epoch 1 after resume, no traceback (likely GPU OOM on 11 GB). Resubmitted as q93-00r2 with 2080 Ti removed from
+  the GPU list (yaml sed). If 2080 Ti packs of 4 keep failing, drop them from make_var_jobs' c<=4 rule.
+
+### q93 (cold from q88 ep4983), Alkaid tick31
+- cold4000-t70k ep4061 80.96% @ 74.9k, 59.9 ns; ep4952 80.04% @ 64.0k, 53.3 ns.
+- cold4000-t80k ep4032 80.87% @ 74.1k, 56.6 ns; ep4839 80.48% @ 63.9k, 53.3 ns.
+- No new frontier point (q91 80.68% @ 65.2k still best near 65k). cold3500 runs traced in tick32.
+- q94 launched (no 2080 Ti): 4th-round cold from q91 ep4791 (init 3500/4000/4500, t85–92k).
+- q93 cold3500 (tick32): t75k ep4192 **80.51% @ 61.5k, 53.3 ns**; ep3504 80.92% @ 73.8k, 56.6 ns; t80k ep4976 80.22% @ 57.5k, 56.6 ns.
+  pT frontier: 80.97@75.0k, 80.92@73.8k, 80.68@65.2k, 80.51@61.5k, 80.22@57.5k, 79.93@51.8k. JEDI pT 80.94@70.7k still ~0.3% above our curve.
