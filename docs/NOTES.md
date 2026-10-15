@@ -846,3 +846,13 @@ All kT designs out of envelope (>100 ns) with ~220–280k LUT incl. sorter; no a
   5th cold round ~flat vs 4th (plateau). Remaining two q95 runs traced in tick37.
 - q95 cold4000 runs (tick37): ws94a ep4313 80.64% @ 60.9k, 53.3 ns; ws94b ≤80.37%. Cold-round line plateaued at ~80.7% @ 60k / ~81.0% @ 75k.
 - q96 launched: best two cold recipes (q94 ws91-cold4000-t92k, q93 ws88f-cold3500-t75k) with seeds 1,2 — seed lottery for the last ~0.1%.
+
+### q96 seed lottery (tick38, Alkaid) + q97
+- ws91-cold4000-t92k seeds 1/2: s1 ep4234 80.63% @ 64.4k, 56.6 ns; s2 ep4655 80.64% @ 62.2k, 59.9 ns; s2 ep4726 80.64% @ 63.8k.
+  With s0 (q94 ep4617 80.72% @ 62.6k): **80.66 ± 0.05% (3 seeds) @ ~63k LUT**. Seed lottery did not close the gap to JEDI pT 80.94% @ 70.7k.
+- ws88f-cold3500-t75k seeds 1/2 finished (final val 80.1/79.9%); traced in trace-q96b.
+- Selection note (user Q): Pareto ckpts + trace shortlist use validation (10% of train); reported acc is the 260k test set.
+  Picking frontier points by test acc among traced ckpts is a small optimistic bias (~0.05–0.1%), same procedure as the
+  JEDI-Linear paper (val Pareto → implement all → test acc; no ± or seeds reported there). Test-set stat error ≈ ±0.08%.
+- Leaderboard: 170 rows with only 1 finished seed display "±0.00" (misleading); proposed hiding ± when n_done<2 — awaiting user OK.
+- **q97 launched** (new axis): fewer particle slots, q72 recipe from scratch 5000 ep KD-8: N=48 t130k/t100k, N=40 t100k, N=56 t110k.
