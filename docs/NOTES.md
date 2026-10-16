@@ -856,3 +856,22 @@ All kT designs out of envelope (>100 ns) with ~220–280k LUT incl. sorter; no a
   JEDI-Linear paper (val Pareto → implement all → test acc; no ± or seeds reported there). Test-set stat error ≈ ±0.08%.
 - Leaderboard: 170 rows with only 1 finished seed display "±0.00" (misleading); proposed hiding ± when n_done<2 — awaiting user OK.
 - **q97 launched** (new axis): fewer particle slots, q72 recipe from scratch 5000 ep KD-8: N=48 t130k/t100k, N=40 t100k, N=56 t110k.
+- q96 ws88f-cold3500-t75k seeds 1/2 (trace-q96b): s1 ep3502 80.86% @ 75.8k, 56.6 ns; s2 ep3533 80.76% @ 72.6k, 59.9 ns;
+  s2 ep4156 80.60% @ 60.0k, 53.3 ns; s1 ep4636 80.40% @ 59.5k. With s0 (q93 ep3504 80.92% @ 73.8k): ~74k point = 80.85 ± 0.08% (3 seeds).
+  No new frontier point. q97 running (~200 ep/h, ~24 h for 5000 ep); early val at ep~200: N=56 82.1%, N=40 80.6%, N=48 80.0/79.4%.
+
+### q97 fewer slots (tick40, Alkaid trace-q97a, mid-run ckpts) + LUT-yardstick check
+- N=56 t110k ep1577 81.43% @ 96.7k, 66.6 ns; ep2490 79.72% @ 69.3k. N=48 t130k ep1250 81.32% @ 124k; ep2783 80.74% @ 86.5k, 63.3 ns.
+  N=48 t100k ep2118 80.54% @ 75.9k, 66.6 ns. N=40 collapsing (80.58% @ 129k; 78.80% @ 60.3k). Same or worse than N=64 at equal LUT,
+  and ~7 ns slower. Fewer-slot line: no gain so far (final ckpts still to trace).
+- **Yardstick mismatch found:** JEDI bars 158k (perm-inv) / 70.7k (pT) are the old da4ml cutoff-4 estimate (69.9k for pT) / paper;
+  our frontier LUTs are Alkaid LUT estimates. Alkaid on official JEDI perm-inv N=64 gave 140.4k (= 0.89x of da4ml 158k).
+  If the pT model scales the same, JEDI pT is ~62k in our yardstick, i.e. our 80.72% @ 62.6k sits ~0.2% below it, not ~0.1%.
+  Launched alkaid-jedi-pt: standalone/alkaid_latency.py on official 3-feature-n64 (pT) + perm-inv rerun as calibration.
+- **Same-yardstick JEDI bars (alkaid-jedi-pt2, env-alkaid312, hwconf (1,-1,-1)):** official JEDI pT-sorted N=64 = **63.5k Alkaid LUT,
+  crit 56.4 ns -> 19 stg = 63.3 ns** (published post-route 71k / 61 ns); perm-inv rerun 140,385 LUT, 73.3 ns (reproduced exactly).
+  (env-alkaid lacks keras; the 20k-jet acc printed by this script in env-alkaid312 is wrong (55-60%) — input-prep mismatch, LUT/crit
+  depend only on weights. Use the 260k test accs 80.94% / 81.81%.)
+  => apples-to-apples targets: **pT 80.94% @ 63.5k / 63.3 ns; perm-inv 81.81% @ 140.4k / 73.3 ns**.
+  Our pT frontier at ~63k: 80.72% (s0) / 80.66 ± 0.05% (3 seeds) -> **~0.25% short**, not ~0.1%. Our points are ~7 ns faster.
+  Perm-inv: our best 81.38% @ 131k -> ~0.4% short. Wrote results/alkaid/_jedi_official/3-feature-n64.json (leaderboard ref row).
