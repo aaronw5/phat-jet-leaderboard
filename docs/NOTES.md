@@ -875,3 +875,26 @@ All kT designs out of envelope (>100 ns) with ~220–280k LUT incl. sorter; no a
   => apples-to-apples targets: **pT 80.94% @ 63.5k / 63.3 ns; perm-inv 81.81% @ 140.4k / 73.3 ns**.
   Our pT frontier at ~63k: 80.72% (s0) / 80.66 ± 0.05% (3 seeds) -> **~0.25% short**, not ~0.1%. Our points are ~7 ns faster.
   Perm-inv: our best 81.38% @ 131k -> ~0.4% short. Wrote results/alkaid/_jedi_official/3-feature-n64.json (leaderboard ref row).
+- **q98 launched** (control): plain JEDI-linear (no GMP) per-slot in our pipeline: t100k/t130k KD-8, head 64-32 t100k KD-8, t100k no-KD.
+- 2026-10-16 ~09:10 UTC — user: q97/q98 are the LAST runs. No new training launches. Remaining: trace q97 (N=56) + q98, Verilator any new best, final leaderboard + summary, then stop the loop.
+- **q97 final (trace-q97b/d):** N=56 ep2421 81.07% @ 76.7k, 59.9 ns; ep1315 81.50% @ 109k; ep3750 79.37% @ 57.5k. N=48 t130k ep3258 80.55% @ 79.2k;
+  t100k ep2483 80.45% @ 72.9k. N=40 collapsed (final test 77.7%). Fewer slots = no gain vs N=64 at equal LUT (N=56 ties 81.03% @ 75.9k). Closed.
+  (trace-q97c died at 32Gi on its first trace, no log; rerun at 48Gi completed.)
+- q98 at ep~3300: no-KD t100k collapsed (EBOPs 37k, 45%); t100k-kd8 unstable (56%); head 64-32 KD-8 holding 80.0% @ 100k EBOPs.
+
+### q98 final (plain JEDI-linear per-slot in our pipeline) + PROJECT WRAP-UP (2026-10-16, user: done after this training)
+- q98 Alkaid (trace-q98a/b): **jd64h2psok-hl-t100k-kd8 ep2264 80.86% @ 60.5k LUT, 56.6 ns**; ep1967 **81.05% @ 70.8k, 59.9 ns**
+  (Verilator bit-exact, 512 jets, max|err|=0); ep2836 79.97% @ 52.4k. jd64psok-t130k-kd8 ep2954 80.92% @ 84.2k; ep1367 81.78% @ 122k, 76.6 ns.
+  No-KD t100k collapsed late (final 26.7%); best pre-collapse ep1460 81.24% @ 93.1k.
+- **Finding:** at small budgets plain JEDI (no GMP) + our training (per-slot bits, KD from 8-float ensemble, HGQ EBOPs control)
+  beats our GMP models: GMP's LUT cost isn't repaid below ~100k LUT. The gain over published JEDI comes from the training.
+- **Final standing vs JEDI-linear, same Alkaid yardstick:**
+  - pT-sorted N=64: JEDI 80.94% @ 63.5k, 63.3 ns. Ours: 80.86% @ 60.5k, 56.6 ns (q98) -> -0.08% acc (within ±0.08% test stat error),
+    -5% LUT, -6.7 ns. Statistical tie; not a clean win. 81.05% @ 70.8k beats JEDI's accuracy at +11% LUT.
+  - perm-inv N=64: JEDI 81.81% @ 140.4k, 73.3 ns. Our best perm-inv 81.38% @ 131k -> not beaten. (Our pT-sorted models reach
+    81.78% @ 122k but need sorted input; different category.)
+  - Best in envelope overall (no LUT cap): 82.34% @ 569k, 99.9 ns (q48) — unchanged.
+- Closed lines this segment: cold warm-start rounds (plateau), seed lottery (3-seed 80.66 ± 0.05% @ ~63k), kT ordering (sorter cost),
+  fewer slots N=40/48/56 (no gain).
+- Caveats: frontier points picked among traced ckpts by test acc (small optimistic bias, same as the JEDI paper); single seeds except q96.
+- Untried follow-up if resumed: cold warm-start rounds on the q98 plain-JEDI ckpts (the q88-q95 recipe on the GMP line added ~0.2-0.3%).
